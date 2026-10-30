@@ -43,8 +43,7 @@ the upstream repository.
 
 ## Status
 
-Everything below was tested on a Samsung Galaxy S24 FE running Android 17, and
-on the Android 17 emulator. No other devices have been tested yet.
+Everything below has been tested on multiple Android VMs, and a Samsung S24 FE. Provided a semi-recent enough version of Android WebView and everything should work.
 
 What works:
 
@@ -62,6 +61,7 @@ What works:
 - Your library: likes, playlists, saved albums and artists
 - Local music from a folder you pick
 - Portrait and landscape, with a wider layout for tablets and desktop windows
+- Samsung DeX is supported. Enable fullscreen for the app from the status bar to make theater mode fill the entire display.
 
 What doesn't work, or works differently:
 
@@ -79,7 +79,6 @@ What doesn't work, or works differently:
   pasting cookies still works.
 - **Tray, mini player window, global hotkeys, start on login and the
   self-updater** are desktop features with no Android equivalent.
-- **Samsung DeX** is supported. Enable fullscreen for the app from the status bar to make theater mode fill the entire display.
 - If Android kills the app in the background, the notification can't restart
   playback yet. Open the app again instead.
 
