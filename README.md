@@ -1,15 +1,20 @@
 <div align="center">
+  <img src="./src-tauri/icons/128x128@2x.png" alt="Limusic icon" width="128">
 
-<img src="./src-tauri/icons/128x128@2x.png" alt="Limusic icon" width="128">
+  <h1>Limusic for Android</h1>
 
-# Limusic for Android
+  <p>
+    An unofficial Android port of
+    <a href="https://github.com/SimoHypers/limusic">Limusic</a>,
+    the YouTube Music client by SimoHypers.
+  </p>
 
-An unofficial Android port of [Limusic](https://github.com/SimoHypers/limusic),
-the YouTube Music client by SimoHypers.
-
-[Download](https://github.com/vajoexe/limusic-android/releases)
-
+  <h2><a href="https://github.com/vajoexe/limusic-android/releases">Download</a></h2>
 </div>
+
+> **NOTICE:** If you are experiencing broken UI rendering, your WebView version is probably too old. Reported issues regarding this matter will be ignored and closed.
+>
+> [How to update WebView](https://support.google.com/android/thread/103561027/an-update-regarding-app-crashes-and-system-webview?hl=en)
 
 This is the desktop app's code running on a phone. The Rust core, the SvelteKit
 interface and the libmpv playback engine are the same ones the desktop app uses.
@@ -170,8 +175,8 @@ written to any file. In CI, set `LIMUSIC_ANDROID_STORE_FILE`,
 Keep the keystore out of the repository. `*.jks`, `*.keystore`, `*.p12` and
 `keystore.properties` are gitignored as a safety net. Back up the keystore and
 its password somewhere other than the build machine: for example the `.jks` file
-attached to an entry in an encrypted password manager, plus an offline copy on a
-USB drive kept apart from the password.
+attached to an entry in an encrypted password manager, plus an offline copy on
+a USB drive kept apart from the password.
 
 Last.fm scrobbling needs your own API key, the same as the desktop app. Put it
 in `src-tauri/lastfm.keys`:
@@ -208,8 +213,8 @@ for this port are described in [NOTICE](NOTICE).
 The APK includes a GPL build of FFmpeg, which is why the app as a whole is
 distributed under GPL version 3. Anyone who distributes the APK has to make the
 matching source code available too. This repository is that source for the app.
-[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) has links to the source of the
-bundled libraries.
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) has links to the source of
+the bundled libraries.
 
 ## Disclaimer
 
