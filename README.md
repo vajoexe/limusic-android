@@ -7,6 +7,8 @@
 An unofficial Android port of [Limusic](https://github.com/SimoHypers/limusic),
 the YouTube Music client by SimoHypers.
 
+[Download](https://github.com/vajoexe/limusic-android/releases)
+
 </div>
 
 This is the desktop app's code running on a phone. The Rust core, the SvelteKit
@@ -33,10 +35,6 @@ the upstream repository.
     <td><img src="screenshots/settings.png" alt="Appearance and playback settings"></td>
   </tr>
 </table>
-
-The screenshots are 7680x4320. They are shown as PNG so they display in every
-browser. The [screenshots](screenshots) folder also has lossless JPEG XL copies
-(`.jxl`) with exactly the same pixels at about 30% less size.
 
 ## Status
 
