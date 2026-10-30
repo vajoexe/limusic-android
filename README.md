@@ -79,8 +79,7 @@ What doesn't work, or works differently:
   pasting cookies still works.
 - **Tray, mini player window, global hotkeys, start on login and the
   self-updater** are desktop features with no Android equivalent.
-- **Samsung DeX** should work through Android's desktop windowing, but it has
-  only been tried in the emulator so far.
+- **Samsung DeX** is supported. Enable fullscreen for the app from the status bar to make theater mode fill the entire display.
 - If Android kills the app in the background, the notification can't restart
   playback yet. Open the app again instead.
 
