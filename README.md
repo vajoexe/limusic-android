@@ -43,7 +43,7 @@ the upstream repository.
 
 ## Status
 
-Everything below has been tested on multiple Android VMs, and a Samsung S24 FE. Provided a semi-recent enough version of Android WebView and everything should work.
+Everything below has been tested on multiple Android VMs with multiple Android versions, and a Samsung S24 FE. Provided a semi-recent enough version of Android WebView and everything should work.
 
 What works:
 
