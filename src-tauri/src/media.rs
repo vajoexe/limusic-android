@@ -7,23 +7,34 @@
 
 use std::sync::mpsc::{channel, Sender};
 use std::sync::{Arc, OnceLock};
+#[cfg(not(target_os = "android"))]
 use std::time::Duration;
 
-use souvlaki::{
-    MediaControlEvent, MediaControls, MediaMetadata, MediaPlayback, MediaPosition, PlatformConfig,
-    SeekDirection,
-};
+use souvlaki::{MediaControlEvent, MediaPosition, SeekDirection};
+#[cfg(not(target_os = "android"))]
+use souvlaki::{MediaControls, MediaMetadata, MediaPlayback, PlatformConfig};
 use tauri::{AppHandle, Manager};
 
 use crate::state::AppState;
 
 /// Update messages: app → media-controls owner thread.
 enum MediaUpdate {
-    Metadata { title: String, artist: String, album: Option<String>, cover: Option<String> },
+    Metadata {
+        title: String,
+        artist: String,
+        album: Option<String>,
+        cover: Option<String>,
+    },
     Album(String), // learned after the track's metadata went out; keeps the duration
     Duration(f64),
-    Playback { playing: bool, pos: f64 },
+    Playback {
+        playing: bool,
+        pos: f64,
+    },
+    #[cfg_attr(target_os = "android", allow(dead_code))]
     Volume(i64), // slider percent, 0-100
+    /// Nothing is loaded any more (`AppState::dismiss_session`).
+    Clear,
 }
 
 /// App-side handle to the media-controls thread. Cheap to clone-send into. `None` when the OS
@@ -66,14 +77,25 @@ impl MediaHandle {
     pub fn set_volume(&self, volume: i64) {
         let _ = self.tx.send(MediaUpdate::Volume(volume));
     }
+
+    /// The session ended: no track, no controls.
+    pub fn clear(&self) {
+        let _ = self.tx.send(MediaUpdate::Clear);
+    }
 }
 
 /// Spawn the media-controls owner thread. Returns `None` if the platform controls can't be
 /// created (integration simply absent then — MPRIS-only fallback is blessed, context/16).
 pub fn spawn(app: AppHandle) -> Option<MediaHandle> {
     let (tx, rx) = channel::<MediaUpdate>();
+    #[cfg(not(target_os = "android"))]
     let spawned =
         std::thread::Builder::new().name("media-controls".into()).spawn(move || run(app, rx));
+    #[cfg(target_os = "android")]
+    let spawned = {
+        let _ = app;
+        std::thread::Builder::new().name("media-controls".into()).spawn(move || run_android(rx))
+    };
     match spawned {
         Ok(_) => Some(MediaHandle { tx }),
         Err(e) => {
@@ -85,6 +107,7 @@ pub fn spawn(app: AppHandle) -> Option<MediaHandle> {
 
 // `duration` is reset per track in the Metadata arm; the lint can't see the loop's later reads.
 #[allow(unused_assignments)]
+#[cfg(not(target_os = "android"))]
 fn run(app: AppHandle, rx: std::sync::mpsc::Receiver<MediaUpdate>) {
     // On Windows SMTC needs the main window handle; Linux/macOS ignore it.
     #[cfg(target_os = "windows")]
@@ -165,10 +188,35 @@ fn run(app: AppHandle, rx: std::sync::mpsc::Receiver<MediaUpdate>) {
             }
             #[cfg(not(target_os = "linux"))]
             MediaUpdate::Volume(_) => {}
+            MediaUpdate::Clear => {
+                let _ = controls.set_playback(MediaPlayback::Stopped);
+            }
         }
     }
 }
 
+/// Android: the media session lives in Kotlin (`PlaybackService`), fed over JNI. Its transport
+/// presses come back through [`handle_event`] like every other platform's (android.rs).
+#[cfg(target_os = "android")]
+fn run_android(rx: std::sync::mpsc::Receiver<MediaUpdate>) {
+    use crate::android;
+    while let Ok(update) = rx.recv() {
+        match update {
+            MediaUpdate::Metadata { title, artist, album, cover } => {
+                android::media_metadata(&title, &artist, album.as_deref(), cover.as_deref())
+            }
+            MediaUpdate::Album(album) => android::media_album(&album),
+            MediaUpdate::Duration(secs) => android::media_duration(secs),
+            MediaUpdate::Playback { playing, pos } => android::media_playback(playing, pos),
+            // The hardware volume keys drive the stream volume; the in-app slider scales mpv's
+            // output under it, so there is no session volume to mirror.
+            MediaUpdate::Volume(_) => {}
+            MediaUpdate::Clear => android::media_clear(),
+        }
+    }
+}
+
+#[cfg(not(target_os = "android"))]
 fn apply_metadata(
     controls: &mut MediaControls,
     title: &str,

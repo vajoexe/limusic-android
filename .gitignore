@@ -31,3 +31,10 @@ rustypipe_reports/
 /plans
 scripts/bench.sh
 scripts/triage.py
+
+# Android release signing. The key lives outside the repo (~/.local/share/limusic); these catch a
+# stray copy or a properties file anywhere in the tree.
+*.jks
+*.keystore
+*.p12
+keystore.properties

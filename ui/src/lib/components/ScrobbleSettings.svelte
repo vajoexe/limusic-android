@@ -9,8 +9,10 @@
 	// picks the new config up at once (`set_setting`), so a rule saved mid-track already applies to
 	// that track's scrobble.
 	import { HugeiconsIcon } from '@hugeicons/svelte';
+	import { platform } from '$lib/platform.svelte';
 	import {
 		Add01Icon,
+		ArrowDown01Icon,
 		ArrowDown02Icon,
 		Cancel01Icon,
 		Delete02Icon,
@@ -226,6 +228,9 @@
 
 	// --- Editing one track (#404) ---
 	let editing = $state(false);
+	// The preview's fold on a phone (the aside below).
+	let previewOpen = $state(false);
+	const showPreview = $derived(!platform.compact || previewOpen || editing);
 	let draft = $state({ artist: '', title: '', album: '', skip: false });
 	// The in-app edit for this video, if any. A keyless edit (an import) can match it too, which is
 	// what `preview.edit` reports; saving here adds a video edit in front of it, so this one wins.
@@ -356,7 +361,7 @@
 {/snippet}
 
 <div class="flex min-h-0 flex-1 max-lg:flex-col">
-	<div class="min-w-0 flex-1 overflow-y-auto px-6 py-5">
+	<div class="min-w-0 flex-1 overflow-y-auto {platform.compact ? 'px-4' : 'px-6'} py-5">
 		<section class={GROUP}>
 			<!-- The account, the way Last.fm's own profile header shows it: avatar, name, and the
 			     three counts under it. -->
@@ -772,10 +777,14 @@
 		</section>
 	</div>
 
+	<!-- On a phone the preview is one row until it's opened: open, it took half of a screen the
+	     settings above need. Editing a track opens it too, since that is where the editor lives. -->
 	<aside
-		class="flex shrink-0 flex-col overflow-y-auto bg-muted/30 px-5 py-5 lg:w-[22rem] lg:border-l max-lg:border-t"
+		class="flex shrink-0 flex-col overflow-y-auto bg-muted/30 {platform.compact
+			? 'max-h-[60%] px-4 py-3'
+			: 'px-5 py-5'} lg:w-[22rem] lg:border-l max-lg:border-t"
 	>
-		<div class="mb-2.5 flex items-center gap-2">
+		<div class="{showPreview ? 'mb-2.5' : ''} flex items-center gap-2">
 			<h3 class="text-[11px] font-semibold tracking-[0.08em] text-muted-foreground uppercase">
 				{t('settings.discord.preview')}
 			</h3>
@@ -795,7 +804,24 @@
 					{t('settings.scrobbling.preview_back')}
 				</button>
 			{/if}
+			{#if platform.compact}
+				<button
+					type="button"
+					class="{source === 'picked' ? '' : 'ml-auto'} -m-1.5 flex cursor-pointer p-1.5 text-muted-foreground"
+					aria-expanded={showPreview}
+					aria-label={t('settings.discord.preview')}
+					onclick={() => (previewOpen = !previewOpen)}
+				>
+					<HugeiconsIcon
+						icon={ArrowDown01Icon}
+						size={16}
+						class="transition-transform {showPreview ? 'rotate-180' : ''}"
+					/>
+				</button>
+			{/if}
 		</div>
+
+		{#if showPreview}
 
 		<!-- What YouTube Music calls it, and what changed it on the way. -->
 		<div class="rounded-xl border border-dashed p-3">
@@ -911,6 +937,7 @@
 					{t('settings.scrobbling.edit_track')}
 				</Button>
 			{/if}
+		{/if}
 		{/if}
 	</aside>
 </div>

@@ -216,6 +216,10 @@ struct Decks {
     loop_file: AtomicBool,
     cache_dir: String,
     afir_normalization: OnceLock<&'static str>,
+    /// Whether this libmpv's FFmpeg has `volume` and `alimiter`, probed once (Android only; see
+    /// [`lavfi_gain_available`]).
+    #[cfg_attr(not(target_os = "android"), allow(dead_code))]
+    lavfi_gain: OnceLock<bool>,
     tx: UnboundedSender<PlayerEvent>,
     /// Music videos waiting for (or attached to) the audio file they belong to. See `video.rs`.
     videos: Mutex<video::Videos>,
@@ -413,6 +417,7 @@ impl Player {
             loop_file: AtomicBool::new(false),
             cache_dir: cache_dir.to_owned(),
             afir_normalization: OnceLock::new(),
+            lavfi_gain: OnceLock::new(),
             tx,
             videos: Mutex::new(video::Videos::default()),
             video_visible: AtomicBool::new(false),
@@ -838,7 +843,13 @@ fn ensure_reverb_asset(decks: &Decks, preset: u8) -> Result<std::path::PathBuf, 
 
 fn apply_filters(decks: &Decks, deck: usize, af: &AudioFilters) -> Result<(), Error> {
     let Some(mpv) = decks.mpv(deck) else { return Ok(()) };
-    let mut chain = af_chain(af.gain[deck], 0, 1.0);
+    let lavfi_gain = lavfi_gain_available(decks);
+    let mut chain = af_chain(if lavfi_gain { af.gain[deck] } else { None }, 0, 1.0);
+    if !lavfi_gain {
+        // mpv's own volume stage instead. It has no limiter, so it only ever turns a loud track
+        // down: lifting a quiet one would clip its peaks.
+        mpv.set_property("volume-gain", af.gain[deck].unwrap_or(0.0).min(0.0))?;
+    }
     if af.reverb.enabled {
         if !chain.is_empty() {
             chain.push(',');
@@ -894,6 +905,25 @@ fn apply_filters(decks: &Decks, deck: usize, af: &AudioFilters) -> Result<(), Er
     })?;
     mpv.set_property("speed", af.speed)?;
     Ok(())
+}
+
+/// The loudness gain is a lavfi `volume` (plus `alimiter` when it lifts), and every desktop libmpv
+/// Limusic ships against has both. The Android one (the `dev.jdtech.mpv` prebuilt) carries a
+/// minimal libavfilter without them, and a cold deck only *stores* its `af` chain, so a chain it
+/// can't build surfaces when the next file loads, as "no playable audio". Probed once there, off
+/// both decks.
+fn lavfi_gain_available(decks: &Decks) -> bool {
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = decks;
+        true
+    }
+    #[cfg(target_os = "android")]
+    {
+        *decks.lavfi_gain.get_or_init(|| {
+            validate_lavfi("lavfi=[volume=0dB,alimiter=limit=1:level=disabled:latency=1]").is_ok()
+        })
+    }
 }
 
 fn set_filter_chain(mpv: &Mpv, chain: &str) -> Result<(), libmpv2::Error> {

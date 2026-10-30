@@ -3,6 +3,7 @@
 	import { cn, type WithoutChildrenOrChild } from "$lib/utils.js";
 	import PopoverPortal from "./popover-portal.svelte";
 	import type { ComponentProps } from "svelte";
+	import { platform } from "$lib/platform.svelte";
 
 	let {
 		ref = $bindable(null),
@@ -10,6 +11,15 @@
 		sideOffset = 4,
 		align = "center",
 		portalProps,
+		// On a phone, keep clear of the status and navigation bars and off the screen edges.
+		collisionPadding = platform.compact
+			? {
+					top: platform.insets.top + 8,
+					bottom: platform.insets.bottom + 8,
+					left: platform.insets.left + 16,
+					right: platform.insets.right + 16,
+				}
+			: undefined,
 		...restProps
 	}: PopoverPrimitive.ContentProps & {
 		portalProps?: WithoutChildrenOrChild<ComponentProps<typeof PopoverPortal>>;
@@ -22,6 +32,7 @@
 		data-slot="popover-content"
 		{sideOffset}
 		{align}
+		{collisionPadding}
 		class={cn(
 			"bg-popover text-popover-foreground data-open:animate-in data-closed:animate-out data-closed:fade-out-0 data-open:fade-in-0 data-closed:zoom-out-95 data-open:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 ring-foreground/5 flex flex-col gap-4 rounded-2xl p-4 text-sm shadow-2xl ring-1 duration-100 z-50 w-72 origin-(--bits-popover-content-transform-origin) outline-hidden",
 			className

@@ -6,6 +6,8 @@ import { browser } from '$app/environment';
 import { invoke } from '@tauri-apps/api/core';
 import { translations, LOCALES, type LocaleId, type Translations } from './locales';
 import { coverage, pickLocale } from './langlist';
+import { ANDROID_ALL, ANDROID_EN } from './locales/android';
+import { isAndroid } from './platform.svelte';
 
 export type { LocaleId };
 
@@ -77,7 +79,12 @@ function getNestedValue(obj: unknown, path: string): unknown {
  *   t('settings.about.version', { version: '0.5.5' })
  */
 export function t(key: TranslationKey, params?: Record<string, string | number>): string {
-	let str = getNestedValue(translations[activeLocale], key);
+	// The Android port's own wording (locales/android.ts): its identity in any language, its
+	// device terms over English.
+	let str: unknown = isAndroid
+		? (ANDROID_ALL[key] ?? (activeLocale === 'en' ? ANDROID_EN[key] : undefined))
+		: undefined;
+	str ??= getNestedValue(translations[activeLocale], key);
 	// Weblate writes an untranslated string as "", so empty counts as missing: a half-finished
 	// catalog must render English, not a blank label.
 	if (typeof str !== 'string' || str === '') str = getNestedValue(translations.en, key);

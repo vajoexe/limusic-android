@@ -7,6 +7,7 @@
 	// boxes of different widths (#319). Now it is six posters in rank order, the same frame the feed
 	// uses for an artist (PortraitCard), with the rank and the count set on the photograph: the order
 	// carries the ranking, the count carries the "yours".
+	import { platform } from '$lib/platform.svelte';
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { HugeiconsIcon } from '@hugeicons/svelte';
@@ -164,7 +165,9 @@
 {#if loading ? ids.length >= MIN : artists.length >= MIN}
 	<section>
 		<SectionHeading title={t('home.familiar_artists')} icon={UserStar01Icon} />
-		<div class="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
+		<!-- A phone on its side is wide but short: three columns there made each portrait taller
+		     than the screen, so it takes the six a wide window does. -->
+		<div class="grid gap-3 {platform.short ? 'grid-cols-6' : 'grid-cols-2 sm:grid-cols-3 xl:grid-cols-6'}">
 			{#if loading}
 				{#each Array(Math.min(ids.length, COUNT)) as _, i (i)}
 					<Skeleton class="aspect-[4/5] w-full rounded-2xl" />

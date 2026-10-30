@@ -14,11 +14,11 @@ body:
   - type: dropdown
     id: os
     attributes:
-      label: Which system?
+      label: Which device?
       options:
-        - Linux
-        - Windows
-        - macOS
+        - Android phone
+        - Android tablet or foldable
+        - Samsung DeX or desktop windowing
     validations:
       required: true
 
@@ -27,7 +27,7 @@ body:
     attributes:
       label: Which version of Limusic?
       description: Settings, About tab. Skip this if you cannot find it.
-      placeholder: "0.4.6"
+      placeholder: "1.4.0-rc.3"
 
   - type: textarea
     id: system
@@ -44,5 +44,4 @@ body:
       label: Anything else?
       description: >
         All optional, whatever you have. A screenshot or a screen recording, your
-        Linux distro, how you installed Limusic, or anything the app printed in a
-        terminal. Drag images straight into this box.
+        phone model and Android version, or where you got the APK. Drag images straight into this box.

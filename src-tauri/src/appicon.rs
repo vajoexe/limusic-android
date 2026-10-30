@@ -102,6 +102,9 @@ pub fn scaled(img: &Image<'_>, w: u32, h: u32) -> Image<'static> {
 /// Repaint every runtime surface. Called at startup and whenever the icon changes.
 pub fn apply(app: &AppHandle) {
     let Some(icon) = current(app) else { return };
+    // Android draws its launcher and recents icons from the APK's resources; nothing at runtime
+    // can repaint them, so the custom icon only shows where the app draws it itself.
+    #[cfg(desktop)]
     if let Some(w) = app.get_webview_window("main") {
         // Alt-Tab and the small titlebar icon. Tauri routes this to tao's `set_window_icon`,
         // which sends WM_SETICON with ICON_SMALL and nothing else, at the source's own size.
@@ -110,7 +113,7 @@ pub fn apply(app: &AppHandle) {
         // call is a *queued* window message while `set_icons` is a synchronous `SendMessageW`:
         // whichever lands last wins, and leaving both in would put the unscaled icon back at
         // random. `set_icons` covers ICON_SMALL as well, at the size the shell draws.
-        #[cfg(not(target_os = "windows"))]
+        #[cfg(not(any(target_os = "windows", mobile)))]
         let _ = w.set_icon(icon.clone());
         #[cfg(target_os = "windows")]
         crate::taskbar::set_icons(&w, &icon);

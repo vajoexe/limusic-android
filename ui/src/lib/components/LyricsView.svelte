@@ -69,6 +69,7 @@
 	import { playback } from '$lib/player.svelte';
 	import { currentLocale, t } from '$lib/i18n.svelte';
 	import * as Popover from '$lib/components/ui/popover';
+	import { platform } from '$lib/platform.svelte';
 	import LyricsSourcePicker from './LyricsSourcePicker.svelte';
 
 	// `expanded` only sizes the type and centres the column. The owner of the extra room (the side
@@ -400,7 +401,14 @@
 	<div class="mt-3 flex items-center gap-1 border-t border-border/60 px-4 pt-2 pb-1.5 text-xs text-muted-foreground">
 		<!-- The source is the switch (#23): a popover with every provider's answer for this song. -->
 		<div class="flex min-w-0 flex-1">
-			<LyricsSourcePicker {lyrics} {track} bind:open={pickerOpen} onchange={onPicked} />
+			<!-- A phone on its side: over the lyrics, not a popover (the owner's box is `relative`). -->
+			<LyricsSourcePicker
+				{lyrics}
+				{track}
+				bind:open={pickerOpen}
+				onchange={onPicked}
+				fill={platform.short}
+			/>
 		</div>
 		<!-- Each only on lyrics that have something for it, so neither sits there dead. The mini
 		     player has no footer and follows whatever was chosen here. -->

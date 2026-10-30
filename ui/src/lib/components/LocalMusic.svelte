@@ -5,8 +5,10 @@
 	import { onMount } from 'svelte';
 	import { HugeiconsIcon } from '@hugeicons/svelte';
 	import { open } from '@tauri-apps/plugin-dialog';
+	import { listen } from '@tauri-apps/api/event';
 	import {
 		Add01Icon,
+		InformationCircleIcon,
 		Delete02Icon,
 		DriveIcon,
 		PlayIcon,
@@ -14,6 +16,8 @@
 		ShuffleIcon
 	} from '@hugeicons/core-free-icons';
 	import { Button } from '$lib/components/ui/button';
+	import * as Popover from '$lib/components/ui/popover';
+	import { isAndroid, platform } from '$lib/platform.svelte';
 	import * as Tabs from '$lib/components/ui/tabs';
 	import MediaCard from './MediaCard.svelte';
 	import MediaCardSkeleton from './MediaCardSkeleton.svelte';
@@ -85,8 +89,35 @@
 	const SOURCE = 'Local music';
 
 	async function pickFolder() {
+		if (isAndroid) return pickAndroidFolder();
 		const picked = await open({ directory: true, multiple: false, title: t('local.pick_folder_dialog') });
 		if (typeof picked === 'string') await addLocalFolder(picked);
+	}
+
+	// Android: the system picker, after the audio-files permission (MainActivity.pickFolder). While
+	// that permission is missing (refused, dismissed, or revoked in Settings since) a small ⓘ sits
+	// by the button and says so, with the way to Settings. `null`: not known yet.
+	let access = $state<boolean | null>(null);
+	let accessInfo = $state(false);
+	onMount(() => {
+		if (!isAndroid) return;
+		api.localAudioAccess().then((a) => (access = a)).catch(() => {});
+		const off = listen<boolean>('audio-access', (e) => (access = e.payload));
+		return () => void off.then((f) => f());
+	});
+	async function pickAndroidFolder() {
+		try {
+			const r = await api.pickLocalFolder();
+			if (r.status === 'picked') {
+				access = true;
+				await addLocalFolder(r.path);
+			} else if (r.status === 'denied') {
+				access = false;
+				accessInfo = true;
+			} else if (r.status === 'unsupported') toast.error(t('local.folder_unsupported'));
+		} catch (e) {
+			toast.error(String(e));
+		}
 	}
 
 	// The filtered list, not the whole library: Play all plays what the list shows.
@@ -104,15 +135,22 @@
 
 <div class="flex flex-col gap-5">
 	<!-- Folders -->
-	<div class="rounded-xl border bg-card/40 p-4">
-		<div class="mb-3 flex items-center justify-between gap-3">
+	<!-- On a phone the card is slimmer and stacks: the heading and its hint get the full width (beside
+	     the buttons they were squeezed into a one-word column), then the buttons in a row, then the
+	     folders, all close together. -->
+	<div class="rounded-xl border bg-card/40 {platform.compact ? 'px-3 pt-2.5 pb-2' : 'p-4'}">
+		<div
+			class={platform.compact
+				? 'mb-1 flex flex-col gap-1'
+				: 'mb-3 flex items-center justify-between gap-3'}
+		>
 			<div class="min-w-0">
 				<div class="flex items-center gap-2 font-medium">
 					<HugeiconsIcon icon={DriveIcon} class="h-4 w-4" /> {t('local.folders')}
 				</div>
 				<p class="mt-0.5 text-xs text-muted-foreground">{t('local.folders_hint')}</p>
 			</div>
-			<div class="flex shrink-0 gap-2">
+			<div class="flex shrink-0 items-center {platform.compact ? '-ml-2 gap-1.5' : 'gap-2'}">
 				<Button
 					variant="ghost"
 					size="sm"
@@ -123,7 +161,36 @@
 					<HugeiconsIcon icon={RefreshIcon} class="h-4 w-4" />
 					{local.loading ? t('local.scanning') : t('local.rescan')}
 				</Button>
-				<Button variant="outline" size="sm" class="gap-2" onclick={pickFolder}>
+				{#if isAndroid && access === false}
+					<Popover.Root bind:open={accessInfo}>
+						<Popover.Trigger
+							class="flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-full text-amber-500 transition-colors hover:bg-foreground/10"
+							aria-label={t('local.access_needed_label')}
+							title={t('local.access_needed_label')}
+						>
+							<HugeiconsIcon icon={InformationCircleIcon} class="h-5 w-5" />
+						</Popover.Trigger>
+						<Popover.Content side="bottom" align="end" class="w-72 gap-3 p-3 text-sm">
+							<p>{t('local.access_needed')}</p>
+							<Button
+								size="sm"
+								class="self-end"
+								onclick={() => {
+									accessInfo = false;
+									api.openAppSettings();
+								}}
+							>
+								{t('local.access_open_settings')}
+							</Button>
+						</Popover.Content>
+					</Popover.Root>
+				{/if}
+				<Button
+					variant="outline"
+					size="sm"
+					class="gap-2 {platform.compact ? 'ml-auto' : ''}"
+					onclick={pickFolder}
+				>
 					<HugeiconsIcon icon={Add01Icon} class="h-4 w-4" /> {t('local.add_folder')}
 				</Button>
 			</div>
@@ -131,7 +198,11 @@
 		{#if local.folders.length}
 			<ul class="flex flex-col gap-1">
 				{#each local.folders as folder (folder)}
-					<li class="flex items-center justify-between gap-3 rounded-lg px-2 py-1.5 hover:bg-accent/10">
+					<li
+						class="flex items-center justify-between gap-3 rounded-lg {platform.compact
+							? 'py-0.5 pl-1 pr-0'
+							: 'px-2 py-1.5'} hover:bg-accent/10"
+					>
 						<span class="truncate font-mono text-xs text-muted-foreground" title={folder}>
 							{folder}
 						</span>
@@ -167,7 +238,7 @@
 					<Tabs.Trigger value="artists">{t('local.artists_count', { count: artists.length })}</Tabs.Trigger>
 					<Tabs.Trigger value="songs">{t('local.songs_count', { count: songs.length })}</Tabs.Trigger>
 				</Tabs.List>
-				<TrackFilter bind:value={query} placeholder={t('common.search_your_music')} />
+				<TrackFilter bind:value={query} placeholder={t('common.search_your_music')} wide />
 			</div>
 			{#if q && !songs.length && !albums.length && !artists.length}
 				<p class="text-sm text-muted-foreground">{t('local.nothing_matches_device', { query: q })}</p>
@@ -235,6 +306,9 @@
 			</Tabs.Content>
 		</Tabs.Root>
 	{:else if local.folders.length}
-		<p class="text-sm text-muted-foreground">{t('local.nothing_playable')}</p>
+		<!-- Without the permission the folders read as empty: say why instead. -->
+		<p class="text-sm text-muted-foreground">
+			{isAndroid && access === false ? t('local.access_needed') : t('local.nothing_playable')}
+		</p>
 	{/if}
 </div>

@@ -1,0 +1,30 @@
+Limusic for Android
+
+This is a modified version of Limusic (https://github.com/SimoHypers/limusic),
+copyright SimoHypers and the Limusic contributors, licensed under the GNU
+General Public License, version 3 or later.
+
+Modified by vajoexe in October 2026. Based on upstream Limusic 1.4.0-rc.3
+(commit d82372cdd3016e3c5e28ea8022596b7fefdf681a).
+
+The changes add an Android build:
+
+- An Android project under src-tauri/gen/android: the main activity, a Media3
+  playback service with a media notification, a sign-in activity, and the
+  Gradle build.
+- Android code paths in the Rust core, gated on target_os = "android": playback
+  through the bundled libmpv, audio focus, window insets, the system folder
+  picker for local music, and stubs for desktop-only features (tray, global
+  hotkeys, Discord, the updater, PoToken generation).
+- A phone layout in the SvelteKit interface (bottom navigation, mini player,
+  full-screen player, landscape player), touch handling, and Android-specific
+  wording in ui/src/lib/locales/android.ts.
+- Build scripts in scripts/android.
+
+The desktop builds for Linux, Windows and macOS are meant to behave as they do
+upstream.
+
+This program is distributed in the hope that it will be useful, but WITHOUT
+ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+FOR A PARTICULAR PURPOSE. See the GNU General Public License in LICENSE for
+more details.

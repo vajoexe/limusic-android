@@ -29,7 +29,7 @@
 	import { HELP_COMBO } from '$lib/shortcuts';
 	import { copyText } from '$lib/clipboard';
 	import * as api from '$lib/api';
-	import { blocked, prefs, refreshLanguage, setAutoplay, ui, toast, unblockArtist } from '$lib/player.svelte';
+	import { blocked, prefs, refreshLanguage, setAutoplay, setVideoQuality, ui, toast, unblockArtist } from '$lib/player.svelte';
 	import { win } from '$lib/win.svelte';
 	import { lt } from '$lib/lt.svelte';
 	import AppearanceSettings from '$lib/components/AppearanceSettings.svelte';
@@ -49,6 +49,7 @@
 	import GlobalHotkeysSettings from '$lib/components/GlobalHotkeysSettings.svelte';
 	import LyricsSourcesSettings from '$lib/components/LyricsSourcesSettings.svelte';
 	import LanguagePicker from '$lib/components/LanguagePicker.svelte';
+	import { isAndroid, platform } from '$lib/platform.svelte';
 
 	type TabId =
 		| 'general'
@@ -59,7 +60,8 @@
 		| 'scrobbling'
 		| 'data'
 		| 'about';
-	const TABS = $derived<{ id: TabId; label: string; hint: string; icon: typeof Settings02Icon }[]>([
+	type Tab = { id: TabId; label: string; hint: string; icon: typeof Settings02Icon };
+	const TABS = $derived<Tab[]>(([
 		{ id: 'general', label: t('settings.tabs.general'), hint: t('settings.tabs.general_hint'), icon: Settings02Icon },
 		{ id: 'themes', label: t('settings.tabs.themes'), hint: t('settings.tabs.themes_hint'), icon: PaintBoardIcon },
 		{ id: 'playback', label: t('settings.tabs.playback'), hint: t('settings.tabs.playback_hint'), icon: PlayCircleIcon },
@@ -68,7 +70,9 @@
 		{ id: 'scrobbling', label: t('settings.tabs.scrobbling'), hint: t('settings.tabs.scrobbling_hint'), icon: LastFmIcon },
 		{ id: 'data', label: t('settings.tabs.data'), hint: t('settings.tabs.data_hint'), icon: Database02Icon },
 		{ id: 'about', label: t('settings.tabs.about'), hint: t('settings.tabs.about_hint'), icon: InformationCircleIcon }
-	]);
+		// Android has neither system-wide hotkeys nor a Discord client to talk to (hotkeys.rs,
+		// discord.rs), so those tabs would only ever say so.
+	] satisfies Tab[]).filter((tb) => !isAndroid || (tb.id !== 'hotkeys' && tb.id !== 'discord')));
 
 	// Shared shapes for the settings rows. Kept as strings so the markup below stays readable and
 	// every group looks identical without a wrapper component per row.
@@ -191,7 +195,9 @@
 				version,
 				system
 			});
-			await api.openExternal(`https://github.com/SimoHypers/limusic/issues/new?${q}`);
+			// The Android port is its own repository: its bugs are no use to the desktop tracker.
+			const repo = isAndroid ? 'vajoexe/limusic-android' : 'SimoHypers/limusic';
+			await api.openExternal(`https://github.com/${repo}/issues/new?${q}`);
 		} catch (e) {
 			diagError = String(e);
 		}
@@ -209,6 +215,8 @@
 		loaded = true;
 	}
 
+	/** The phone shell on its side: tabs down the left instead of a strip across the top. */
+	const rail = $derived(platform.compact && platform.short);
 	const quality = $derived(settings.quality ?? 'HIGH');
 	const historyOn = $derived(settings.enable_history !== 'false');
 	// On unless turned off: loudness matching is what YTM does, and it's what most people want.
@@ -472,23 +480,43 @@
 	     under them, so they need the extra width; every other tab reads better narrow. Deliberately not animated:
 	     transitioning the width relayouts the whole modal every frame, and WebKitGTK is the webview
 	     that would pay for it. -->
+	<!-- A phone gets the whole screen: the tab rail turns into a strip along the top, so the
+	     content keeps the full width instead of a column a few words wide. -->
 	<Dialog.Content
-		class="gap-0 overflow-hidden p-0 {tab === 'discord' || tab === 'scrobbling' || tab === 'themes' ? 'sm:max-w-5xl' : tab === 'hotkeys' ? 'sm:max-w-4xl' : 'sm:max-w-3xl'}"
+		class="gap-0 overflow-hidden p-0 {platform.compact
+			? 'h-dvh max-w-none sm:max-w-none rounded-none ring-0 pt-[var(--inset-top)] pb-[var(--inset-bottom)] pl-[var(--inset-left)] pr-[var(--inset-right)] [&_[data-slot=dialog-close]]:top-[calc(var(--inset-top)+0.75rem)] [&_[data-slot=dialog-close]]:right-[calc(var(--inset-right)+1rem)]'
+			: tab === 'discord' || tab === 'scrobbling' || tab === 'themes' ? 'sm:max-w-5xl' : tab === 'hotkeys' ? 'sm:max-w-4xl' : 'sm:max-w-3xl'}"
 	>
 		<Dialog.Description class="sr-only">{t('settings.title')}</Dialog.Description>
 
-		<div class="flex min-w-0 h-[min(38rem,80vh)]">
+		<!-- A phone on its side (`platform.short`) can't spare the height a strip of tabs takes, so the
+		     rail goes back down the side, as on the desktop, and scrolls. -->
+		<div
+			class="flex min-w-0 {platform.compact
+				? `min-h-0 flex-1 ${rail ? '' : 'flex-col'}`
+				: 'h-[min(38rem,80vh)]'}"
+		>
 			<!-- Tab rail -->
-			<nav class="flex w-52 shrink-0 flex-col border-r bg-muted/40 p-3">
-				<Dialog.Title class="px-3 pt-1 pb-4 font-heading text-base font-semibold">
+			<nav
+				class={platform.compact && !rail
+					? 'flex shrink-0 flex-col border-b bg-muted/40 px-2 pt-2'
+					: rail
+						? 'flex w-48 shrink-0 flex-col overflow-y-auto border-r bg-muted/40 p-2'
+						: 'flex w-52 shrink-0 flex-col border-r bg-muted/40 p-3'}
+			>
+				<Dialog.Title class="px-3 pt-1 {platform.compact ? 'pb-2' : 'pb-4'} font-heading text-base font-semibold">
 					{t('settings.title')}
 				</Dialog.Title>
-				<div class="flex flex-col gap-0.5">
+				<div
+					class={platform.compact && !rail
+						? 'flex gap-1 overflow-x-auto pb-2'
+						: 'flex flex-col gap-0.5'}
+				>
 					{#each TABS as tb (tb.id)}
 						<button
 							onclick={() => (tab = tb.id)}
 							aria-current={tab === tb.id}
-							class="flex w-full cursor-pointer items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm font-medium transition-colors {tab ===
+							class="flex {platform.compact && !rail ? 'shrink-0' : 'w-full'} cursor-pointer items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm font-medium transition-colors {tab ===
 							tb.id
 								? 'bg-background text-foreground shadow-sm ring-1 ring-border/70'
 								: 'text-muted-foreground hover:bg-foreground/5 hover:text-foreground'}"
@@ -503,16 +531,18 @@
 						</button>
 					{/each}
 				</div>
-				{#if version}
+				{#if version && !platform.compact}
 					<span class="mt-auto px-3 pb-1 text-[11px] text-muted-foreground">v{version}</span>
 				{/if}
 			</nav>
 
 			<!-- Content pane. min-w-0: a flex child's min-width is auto, so without it one wide row
 			     (a long font name, a long path) widens the pane and pushes every tab off the modal. -->
-			<div class="flex min-w-0 flex-1 flex-col">
+			<!-- min-h-0 on a phone: the sheet is a column, and without it this pane grows to its content
+			     and is clipped instead of scrolling. -->
+			<div class="flex min-w-0 flex-1 flex-col {platform.compact ? 'min-h-0' : ''}">
 				<!-- h-14 also keeps the dialog's close button clear of the first row. -->
-				<header class="flex h-14 shrink-0 flex-col justify-center border-b px-6 pr-14">
+				<header class="flex h-14 shrink-0 flex-col justify-center border-b {platform.compact ? 'px-4' : 'px-6'} pr-14">
 					<h2 class="text-sm font-semibold">{currentTab.label}</h2>
 					<p class="truncate text-xs text-muted-foreground">{currentTab.hint}</p>
 				</header>
@@ -527,7 +557,11 @@
 				<!-- relative: an absolute child (the lyrics sources' sr-only live region) would otherwise
 				     be laid out against the dialog, outside this pane, and make the overflow-hidden dialog
 				     scrollable. scrollIntoView then scrolls the dialog too and clips its rail (#406). -->
-				<div class="relative min-w-0 flex-1 overflow-y-auto overflow-x-hidden px-6 py-5">
+				<div
+					class="relative min-w-0 flex-1 overflow-y-auto overflow-x-hidden {platform.compact
+						? 'px-4'
+						: 'px-6'} py-5"
+				>
 					{#if !loaded}
 						<p class="text-sm text-muted-foreground">{t('common.loading')}</p>
 					{:else if tab === 'general'}
@@ -535,6 +569,7 @@
 						     first: two stacked dialogs would trap focus in the wrong one. -->
 						<button
 							type="button"
+							data-kbd-hint
 							class="mb-5 inline-flex items-center gap-2 rounded-full border bg-muted/50 px-3 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
 							onclick={() => {
 								ui.settingsOpen = false;
@@ -571,6 +606,9 @@
 						<section class={GROUP}>
 							<h3 class={LABEL}>{t('settings.sections.system')}</h3>
 							<div class={CARD}>
+								<!-- Android has no tray, login items, window titlebar or desktop toasts (the
+								     media notification already names the song), so those rows stay desktop-only. -->
+								{#if !isAndroid}
 								{@render row({
 									title: t('settings.general.close_to_tray'),
 									desc: t('settings.general.close_to_tray_hint'),
@@ -581,7 +619,8 @@
 									desc: t('settings.general.track_notifications_hint'),
 									control: trackNotificationsSwitch
 								})}
-								{#if trackNotificationsOn}
+								{/if}
+								{#if trackNotificationsOn && !isAndroid}
 									{@render row({
 										title: t('settings.general.track_notifications_focused'),
 										desc: t('settings.general.track_notifications_focused_hint'),
@@ -593,19 +632,21 @@
 									desc: t('settings.general.play_on_start_hint'),
 									control: playOnStartSwitch
 								})}
+								{#if !isAndroid}
 								{@render row({
 									title: t('settings.general.autostart'),
 									desc: t('settings.general.autostart_hint'),
 									control: autostartSwitch
 								})}
-								{#if autostartOn}
+								{/if}
+								{#if autostartOn && !isAndroid}
 									{@render row({
 										title: t('settings.general.start_minimized'),
 										desc: t('settings.general.start_minimized_hint'),
 										control: startMinimizedSwitch
 									})}
 								{/if}
-								{#if !systemTitlebarFixed}
+								{#if !systemTitlebarFixed && !isAndroid}
 									{@render row({
 										title: t('settings.general.system_titlebar'),
 										desc: t('settings.general.system_titlebar_hint'),
@@ -688,11 +729,20 @@
 										control: videosFirstSwitch,
 										tall: true
 									})}
+									{#if isAndroid}
+										{@render row({
+											title: t('settings.playback.video_quality'),
+											desc: t('settings.playback.video_quality_hint'),
+											below: videoQualityPicker
+										})}
+									{/if}
 									{@render row({
 										title: t('settings.playback.ambient_light'),
 										badge: t('settings.themes.experimental'),
 										desc: t('settings.playback.ambient_light_hint'),
-										extra: ambientGpu,
+										// The note is about desktop graphics cards (a PassMark list); a phone's
+										// GPU is not on it.
+										extra: isAndroid ? undefined : ambientGpu,
 										control: ambientSwitch,
 										tall: true
 									})}
@@ -779,6 +829,9 @@
 							</div>
 						</section>
 
+						<!-- The updater isn't wired on Android (+layout.svelte): an APK updates by
+						     installing the next one. -->
+						{#if !isAndroid}
 						<section class={GROUP}>
 							<h3 class={LABEL}>{t('settings.sections.updates')}</h3>
 							<div class={CARD}>
@@ -808,6 +861,7 @@
 								{/if}
 							</div>
 						</section>
+						{/if}
 
 						<section class={GROUP}>
 							<h3 class={LABEL}>{t('settings.sections.report')}</h3>
@@ -986,6 +1040,25 @@
 					: 'text-muted-foreground hover:text-foreground'}"
 			>
 				{t(q.key)}
+			</button>
+		{/each}
+	</div>
+{/snippet}
+
+<!-- Under the row at full width, so the three share it rather than bunching up at the left. -->
+{#snippet videoQualityPicker()}
+	<div class="flex rounded-lg bg-muted p-0.5">
+		{#each ['low', 'medium', 'high'] as const as q (q)}
+			<button
+				type="button"
+				onclick={() => setVideoQuality(q)}
+				aria-pressed={prefs.videoQuality === q}
+				class="flex-1 cursor-pointer rounded-md px-3.5 py-1.5 text-xs font-medium transition-colors {prefs.videoQuality ===
+				q
+					? 'bg-background text-foreground shadow-sm'
+					: 'text-muted-foreground hover:text-foreground'}"
+			>
+				{t(`settings.playback.video_quality_${q}`)}
 			</button>
 		{/each}
 	</div>

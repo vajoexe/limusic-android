@@ -7,7 +7,6 @@
 		PauseIcon,
 		ShuffleIcon,
 		RepeatIcon,
-		RepeatOne01Icon,
 		Queue01Icon,
 		Comment01Icon,
 		Mic01Icon,
@@ -23,6 +22,7 @@
 		GoBackward15SecIcon,
 		GoForward15SecIcon
 	} from '@hugeicons/core-free-icons';
+	import { RepeatForeverIcon } from '$lib/icons';
 	import { fade } from 'svelte/transition';
 	import { goto } from '$app/navigation';
 	import { Button } from '$lib/components/ui/button';
@@ -363,7 +363,7 @@
 				<!-- icon swap via altIcon/showAlt — `icon` is frozen at mount (see play/pause above) -->
 				<HugeiconsIcon
 					icon={RepeatIcon}
-					altIcon={RepeatOne01Icon}
+					altIcon={RepeatForeverIcon}
 					showAlt={repeat === 'one'}
 					class="h-4 w-4 {repeat !== 'off' ? 'text-primary' : 'text-muted-foreground'}"
 				/>

@@ -36,6 +36,7 @@
 	import { thumb } from '$lib/thumb';
 	import { appIcon, chooseAppIcon } from '$lib/appicon.svelte';
 	import { t, type TranslationKey } from '$lib/i18n.svelte';
+	import { isAndroid, platform } from '$lib/platform.svelte';
 	import {
 		THEMES,
 		FONTS,
@@ -308,7 +309,7 @@
      strip above the options, since under the options it would be out of sight while dragging. -->
 <div class="flex min-h-0 flex-1 max-lg:flex-col-reverse">
 	<!-- relative: see the content pane in SettingsDialog (#406). -->
-	<div class="relative min-w-0 flex-1 overflow-y-auto overflow-x-hidden px-6 py-5">
+	<div class="relative min-w-0 flex-1 overflow-y-auto overflow-x-hidden {platform.compact ? 'px-4' : 'px-6'} py-5">
 		<section class={GROUP}>
 			<h3 class={LABEL}>{t('settings.sections.theme')}</h3>
 			<div class={CARD}>
@@ -372,11 +373,14 @@
 					desc: t('settings.themes.artwork_accent_hint'),
 					control: artworkAccentSwitch
 				})}
+				<!-- matugen writes its colours to a file on a Linux desktop; nothing does on Android. -->
+				{#if !isAndroid}
 				{@render row({
 					title: t('settings.themes.matugen'),
 					desc: t('settings.themes.matugen_hint'),
 					control: matugenSwitch
 				})}
+				{/if}
 			</div>
 		</section>
 
@@ -389,26 +393,37 @@
 					control: radiusValue,
 					below: radiusSlider
 				})}
+				<!-- The scale is the webview's own zoom (zoom.svelte.ts), which Android's WebView doesn't
+				     take from Tauri (checked on a Galaxy S24 FE: 125% changed nothing). -->
+				{#if !isAndroid}
 				{@render row({
 					title: t('settings.themes.zoom'),
 					desc: t('settings.themes.zoom_hint'),
 					control: zoomStepper
 				})}
+				{/if}
+				<!-- The window and taskbar icon (appicon.rs): Android's launcher icon is the APK's. -->
+				{#if !isAndroid}
 				{@render row({
 					title: t('settings.themes.app_icon'),
 					desc: t('settings.themes.app_icon_hint'),
 					control: appIconButtons
 				})}
+				{/if}
 				{@render row({
 					title: t('settings.themes.blur_playlist_header'),
 					desc: t('settings.themes.blur_playlist_header_hint'),
 					control: blurHeaderSwitch
 				})}
+				<!-- The pill and the player-view options below belong to the desktop shell's titlebar and
+				     player; the phone shell has its own mini player and full-screen player. -->
+				{#if !platform.compact}
 				{@render row({
 					title: t('settings.themes.now_playing_pill'),
 					desc: t('settings.themes.now_playing_pill_hint'),
 					control: nowPlayingPillSwitch
 				})}
+				{/if}
 			</div>
 		</section>
 
@@ -435,6 +450,7 @@
 			</div>
 		</section>
 
+		{#if !platform.compact}
 		<section class={GROUP}>
 			<h3 class={LABEL}>{t('settings.sections.player_view')}</h3>
 			<div class={CARD}>
@@ -465,17 +481,24 @@
 				})}
 			</div>
 		</section>
+		{/if}
 	</div>
 
 	<aside
-		class="flex shrink-0 gap-3 bg-muted/30 px-5 py-5 lg:w-[22rem] lg:flex-col lg:border-l max-lg:items-center max-lg:border-b max-lg:py-3"
+		class="flex shrink-0 gap-3 bg-muted/30 {platform.compact
+			? 'px-4 py-2'
+			: 'px-5 py-5'} lg:w-[22rem] lg:flex-col lg:border-l max-lg:items-center max-lg:border-b max-lg:py-3"
 	>
 		<h3 class="{LABEL} max-lg:hidden">{t('settings.themes.preview')}</h3>
-		<div class="max-lg:w-52 max-lg:shrink-0">
+		<!-- A phone gets the same mock at under two thirds of the size (zoom, since it is laid out in
+		     em off a fixed 10px) and no hint beside it: full size it took a third of the screen. -->
+		<div class="max-lg:w-52 max-lg:shrink-0" style={platform.compact ? 'zoom:0.6' : undefined}>
 			<ThemeMock id={theme.id} dark={isDark} overrides={live} {detail} />
 		</div>
 		<div class="flex min-w-0 flex-col gap-3 lg:flex-1">
-			<p class="text-xs leading-relaxed text-muted-foreground">{t('settings.themes.preview_hint')}</p>
+			{#if !platform.compact}
+				<p class="text-xs leading-relaxed text-muted-foreground">{t('settings.themes.preview_hint')}</p>
+			{/if}
 			<div class="flex flex-col items-start gap-1.5 lg:mt-auto">
 				<Button variant="outline" size="sm" disabled={isDefaultCustom()} onclick={resetAll}>
 					<HugeiconsIcon icon={ArrowTurnBackwardIcon} size={15} strokeWidth={2} />

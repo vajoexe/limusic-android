@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Debug: `cargo tauri android dev` serves the UI from the dev machine over plain http on the
+     LAN, so cleartext is allowed. Never used by a release build. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>

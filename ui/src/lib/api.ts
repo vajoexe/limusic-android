@@ -3,6 +3,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { t } from './i18n.svelte';
+import { isAndroid, platform } from './platform.svelte';
 
 /** How the signed-in user rated a track (innertube `Rating`). The three states are mutually
  *  exclusive: liking a disliked track clears the dislike, and vice versa. */
@@ -403,6 +404,9 @@ export const addToQueue = (items: SongItem[], from?: string, continuation?: stri
 	invoke<void>('add_to_queue', { items, from, continuation });
 /** Clear every upcoming track added by hand, with Play next or Add to queue. */
 export const clearQueued = () => invoke<void>('clear_queued');
+/** End a session that isn't playing (the phone's mini player swiped away). `false`: it was
+ *  playing, or a Listen Together room is open, and nothing changed. */
+export const dismissSession = () => invoke<boolean>('dismiss_session');
 export const nextTrack = () => invoke<void>('next_track');
 export const prevTrack = () => invoke<void>('prev_track');
 /** Put back the queue a click replaced, at the track and position it was left at. Previous does
@@ -440,6 +444,9 @@ export const videoStream = (videoId: string, maxHeight: number) =>
 /** Drop the backend's memory of this track's video URL, after the element failed to load it. */
 export const forgetVideoStream = (videoId: string) =>
 	invoke<void>('forget_video_stream', { videoId });
+
+/** Android's video quality changed: drop every resolved video URL without marking any failed. */
+export const forgetVideoStreams = () => invoke<void>('forget_video_streams');
 
 /** Linux and Windows: where the page's hole for the music video is (`[x, y, w, h]`, CSS pixels,
  *  relative to the viewport), or null when there is none. mpv draws the picture there, under the
@@ -486,7 +493,8 @@ export const setAppIcon = (path: string | null) => invoke<void>('set_app_icon', 
 export const appIconPath = () => invoke<string | null>('app_icon_path');
 
 /** Grant the webview a URL for one font file the user picked, so `@font-face` can load it. */
-export const allowFontFile = (path: string) => invoke<void>('allow_font_file', { path });
+/** Answers the path to keep: the same one on the desktop, the app's own copy on Android. */
+export const allowFontFile = (path: string) => invoke<string>('allow_font_file', { path });
 
 // --- global hotkeys -------------------------------------------------------------------------
 export interface HotkeysConfig {
@@ -548,7 +556,29 @@ export const signOut = () => invoke<void>('sign_out');
  * With `addAccount`, Google's AddSession screen is used so a second account can be added even
  * while the webview already holds a Google session.
  */
-export const loginWebview = (addAccount = false) => invoke<void>('login_webview', { addAccount });
+// On Android every "Sign in" opens CookieSignIn.svelte first: Google's sign-in page
+// (`openGoogleSignIn`), with the cookie paste beside it for an account Google won't let in there.
+// The call sites stay as they are.
+export const loginWebview = async (addAccount = false): Promise<void> => {
+	if (isAndroid) {
+		platform.signInAddAccount = addAccount;
+		platform.signInOpen = true;
+	} else await invoke<void>('login_webview', { addAccount });
+};
+/** Android's folder picker for Local music (the dialog plugin has none there). `denied`: the
+ *  audio-files permission was refused; `unsupported`: a place with no filesystem path. */
+export type FolderPick =
+	| { status: 'picked'; path: string }
+	| { status: 'cancelled' | 'denied' | 'unsupported' };
+export const pickLocalFolder = () => invoke<FolderPick>('pick_local_folder');
+/** Android: may the app read audio files (`null` until the activity has said). */
+export const localAudioAccess = () => invoke<boolean | null>('local_audio_access');
+export const openAppSettings = () => invoke<void>('open_app_settings');
+/** Android: open Google's sign-in page (SignInActivity). The result arrives as on the desktop. */
+export const openGoogleSignIn = (addAccount: boolean) =>
+	invoke<void>('login_webview', { addAccount });
+/** Sign in with a pasted `Cookie` header (Android). `true`: pick a channel next. */
+export const signInCookie = (cookie: string) => invoke<boolean>('sign_in_cookie', { cookie });
 /** Saved Google accounts for the account menu (display fields only). */
 export const getGoogleAccounts = () => invoke<SavedAccount[]>('get_google_accounts');
 /** Activate a saved account without a Google re-login. Fails if its stored session expired. */

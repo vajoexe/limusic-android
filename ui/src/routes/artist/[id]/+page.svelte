@@ -40,6 +40,7 @@
 	import { getCached, putCached } from '$lib/pagecache';
 	import { anchorMenu, fitMenu, NO_ANCHOR } from '$lib/menu';
 	import { t } from '$lib/i18n.svelte';
+	import { platform } from '$lib/platform.svelte';
 
 	let artist = $state<ArtistPage | null>(null);
 	let loading = $state(true);
@@ -240,7 +241,13 @@
 					{expanded ? t('common.less') : t('common.more')}
 				</button>
 			{/if}
-			<div class="mt-5 flex items-center gap-3">
+			<!-- A phone row is narrower than the four buttons: they wrap to a second line, one label
+			     per button, instead of squeezing "Save to library" onto two. -->
+			<div
+				class="mt-5 flex items-center gap-3 {platform.compact
+					? 'flex-wrap [&>button]:whitespace-nowrap'
+					: ''}"
+			>
 				<button
 					class="flex items-center gap-2 rounded-full bg-foreground px-5 py-2.5 text-sm font-semibold text-background transition hover:opacity-90 disabled:opacity-50"
 					onclick={shuffle}

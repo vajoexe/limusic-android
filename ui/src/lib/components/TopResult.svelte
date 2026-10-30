@@ -9,6 +9,7 @@
 	import { openAddToPlaylist, playSong, playback, startRadio } from '$lib/player.svelte';
 	import { thumb } from '$lib/thumb';
 	import { t } from '$lib/i18n.svelte';
+	import { platform } from '$lib/platform.svelte';
 	import ExplicitIcon from './ExplicitIcon.svelte';
 	import ItemMenu from './ItemMenu.svelte';
 	import TrackRow from './TrackRow.svelte';
@@ -70,11 +71,12 @@
 			<div class="absolute inset-0 bg-gradient-to-b from-card/30 via-card/75 to-card"></div>
 		</div>
 	{/if}
-	<div class="flex items-center gap-4 p-5">
+	<!-- A phone row is about 350px: smaller art and gaps, so the title keeps more than two letters. -->
+	<div class="flex items-center {platform.compact ? 'gap-2 p-4' : 'gap-4 p-5'}">
 		<div
 			role="button"
 			tabindex="0"
-			class="flex min-w-0 flex-1 cursor-pointer items-center gap-5"
+			class="flex min-w-0 flex-1 cursor-pointer items-center {platform.compact ? 'gap-3' : 'gap-5'}"
 			onclick={() => openItem(item)}
 			onkeydown={(e) => {
 				if (e.target !== e.currentTarget) return;
@@ -86,7 +88,7 @@
 			title={item.subtitle ? `${item.title} • ${item.subtitle}` : item.title}
 		>
 			<div
-				class="flex h-28 w-28 shrink-0 items-center justify-center overflow-hidden bg-muted text-muted-foreground/50 shadow-xl {round
+				class="flex {platform.compact ? 'h-20 w-20' : 'h-28 w-28'} shrink-0 items-center justify-center overflow-hidden bg-muted text-muted-foreground/50 shadow-xl {round
 					? 'rounded-full'
 					: 'rounded-xl'}"
 			>
@@ -104,10 +106,13 @@
 			</div>
 			<div class="min-w-0">
 				<div
-					class="line-clamp-2 font-heading font-bold leading-tight tracking-tight {item.title
-						.length > 28
-						? 'text-2xl'
-						: 'text-3xl'}"
+					class="line-clamp-2 {platform.compact ? 'break-words' : ''} font-heading font-bold leading-tight tracking-tight {platform.compact
+						? item.title.length > 20
+							? 'text-lg'
+							: 'text-2xl'
+						: item.title.length > 28
+							? 'text-2xl'
+							: 'text-3xl'}"
 				>
 					{item.title}
 				</div>
@@ -129,9 +134,10 @@
 		>
 			<HugeiconsIcon icon={PlayIcon} class="h-5 w-5" />
 		</button>
+		<!-- On a phone the ⋯ is the rows' size, so it lines up with theirs underneath. -->
 		<ItemMenu
 			{item}
-			triggerClass="flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-foreground"
+			triggerClass="flex {platform.compact ? 'h-7 w-7' : 'h-9 w-9'} shrink-0 cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-foreground"
 		/>
 	</div>
 	{#if rows.length}

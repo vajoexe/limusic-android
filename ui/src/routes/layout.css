@@ -20,12 +20,73 @@
    default hover variant — gated behind @media (hover: hover) — never matches, silently killing
    every hover: and group-hover: utility in the app. Redefine hover to fire on a real :hover
    regardless of the pointer heuristic. (This is a desktop app; hover always applies.) */
-@custom-variant hover (&:hover);
+/* Android: except in the phone shell (`html.compact`), which is touch only. On a touchscreen
+   :hover sticks to whatever was tapped last, so a tapped lyric line stayed lit as the current line
+   until the next tap somewhere else. A DeX window with a mouse is not compact and keeps hover, and
+   the desktop never has the class. `:where`, so hover keeps upstream's specificity. */
+@custom-variant hover (:where(html:not(.compact)) &:hover);
 
 /* `.theme-default` as well as :root, so the default palette can be put on an element the way the
    presets are. The Appearance tab's miniatures (`ThemeMock.svelte`) carry `theme-<id>` and `dark`
    themselves, which re-resolves every token for that subtree only: a slider drag restyles the
    miniature, not the document. */
+/* The area kept clear of the system bars, cutout and keyboard (Android, edge to edge). Set from the
+   activity's insets by `platform.svelte.ts`; zero everywhere else. */
+:root {
+	--inset-top: 0px;
+	--inset-right: 0px;
+	--inset-bottom: 0px;
+	--inset-left: 0px;
+}
+
+/* The phone shell is touch first: keyboard-shortcut hints (Ctrl+K in the search fields, the
+   shortcuts list in Settings) only point at keys it hasn't got. A wide DeX window keeps them. */
+html.compact [data-kbd-hint] {
+	display: none;
+}
+
+/* The phone shell scrolls by swipe, so it draws no scrollbars at all: the custom 8px bars below
+   are for a pointer, and on a phone they were a grey line under every sideways strip and down the
+   page edge. A wide DeX window (desktop shell, mouse) keeps them. Both rules: once
+   ::-webkit-scrollbar is styled, Chromium takes it over scrollbar-width. */
+html.compact,
+html.compact * {
+	scrollbar-width: none;
+}
+html.compact ::-webkit-scrollbar {
+	display: none;
+}
+
+/* A sideways strip (chips, shelves) runs on through the page's right gutter to the screen edge,
+   the way a phone shows there is more to swipe to, instead of cutting its last card off 24px
+   (`px-6`) short of it. The left edge stays lined up with the page. A shelf takes the gutter into
+   its own box first (same margin, same padding, so its heading stays put): content-visibility
+   clips whatever hangs out of it. */
+html.compact .rail,
+html.compact [data-shelf] {
+	margin-right: -1.5rem;
+	padding-right: 1.5rem;
+}
+
+/* The floating pieces that clear the desktop player bar with `bottom-24` (or the window edge with
+   `bottom-6`) clear the phone shell's mini player and navigation instead: `--dock` is their
+   measured height (+layout.svelte). */
+html.compact .fixed.bottom-24,
+html.compact .fixed.bottom-6 {
+	bottom: calc(var(--dock, 0px) + 0.75rem);
+}
+
+/* A centred dialog stays between the status bar and the keyboard: the page draws edge to edge, so
+   the keyboard covers it rather than shrinking it, and `--inset-bottom` grows by the keyboard's
+   height while it is open. The margins make the flex centring count only that free band, and the
+   dialog scrolls inside it. Full-screen dialogs (Settings) pad themselves instead. */
+html.compact [data-slot='dialog-content']:not(.h-dvh) {
+	margin-top: var(--inset-top);
+	margin-bottom: var(--inset-bottom);
+	max-height: calc(100dvh - var(--inset-top) - var(--inset-bottom) - 2rem);
+	overflow-y: auto;
+}
+
 :root,
 .theme-default {
 	/* Hue of the neutrals (greys, borders, muted surfaces, dark-mode backgrounds). Every tinted
@@ -741,6 +802,13 @@ html.art-tint.theme-amoled {
 .card-grid > * {
 	content-visibility: auto;
 	contain-intrinsic-size: auto 12.75rem;
+}
+/* A phone has room for two columns and a strip left over, which sat all on the right. The columns
+   spread to both edges instead, and the grid takes back the cards' own padding (their hover fill,
+   which a touchscreen never shows), so the artwork lines up with the page's text. */
+html.compact .card-grid {
+	justify-content: space-between;
+	margin-inline: -0.5rem;
 }
 
 /* --- Moods & Genres tiles (search page) ---

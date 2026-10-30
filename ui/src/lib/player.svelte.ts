@@ -17,6 +17,7 @@ import { clearCached, invalidateCached, LIBRARY_SONGS_KEY } from './pagecache';
 import * as pl from './personal';
 import type { Personal } from './personal';
 import { appearance } from './theme.svelte';
+import { isAndroid } from './platform.svelte';
 import { currentLocale, pushLocaleToRust, t } from './i18n.svelte';
 import { friendlyNetError, isUnreachable } from './neterr';
 import { whenBackOnline } from './reconnect';
@@ -64,6 +65,9 @@ export const prefs = $state({
 	/** Linux: mpv draws the music video under the page (nativevideo.rs) instead of a `<video>`
 	 *  element. Cleared if it turns out there is no GL surface, which hands the picture back. */
 	nativeVideo: false,
+	/** Android's `video_quality`: how big a music video picture to ask for (`videoHeight`). The
+	 *  desktop has no setting and keeps fitting the picture to its box. */
+	videoQuality: 'medium' as VideoQuality,
 	/** `ambient_light`: the player view glows with the music video's colours (Ambient.svelte). */
 	ambient: false,
 	/** `autoplay`: the queue keeps going with similar songs. Switched from the queue panel as well
@@ -105,6 +109,34 @@ const videoUrls = new Map<string, Promise<string | null>>();
  *  New layout: `344` is the titlebar and the player bar (~110), the view's top row and padding
  *  (80), and the title block under the picture (9.5rem, `VIDEO_SIDE`). If any of those changes
  *  height, this does. */
+export type VideoQuality = 'high' | 'medium' | 'low';
+
+/** Android's ladder (`prefs.videoQuality`). High is 1080p: a phone that reports 4K VP9 as smooth
+ *  still stutters at it once ambient light samples every frame (measured on a Galaxy S24 FE), and
+ *  a phone screen shows no more than 1080p anyway. Medium follows the connection, 720p on Wi-Fi and
+ *  480p on mobile data (an unknown connection counts as metered); low is 480p. */
+async function androidVideoHeight(): Promise<number> {
+	if (prefs.videoQuality === 'low') return 480;
+	if (prefs.videoQuality === 'medium') {
+		const type = (navigator as Navigator & { connection?: { type?: string } }).connection?.type;
+		return type === 'wifi' || type === 'ethernet' ? 720 : 480;
+	}
+	return 1080;
+}
+
+/** The height to ask Rust for: the Android setting there, the box everywhere else. */
+const videoHeight = (): Promise<number> =>
+	isAndroid ? androidVideoHeight() : Promise.resolve(wantedVideoHeight());
+
+/** The quality setting moved: drop every resolved URL, here and in Rust, so the next video asks
+ *  again at the new height. */
+export function setVideoQuality(q: VideoQuality) {
+	prefs.videoQuality = q;
+	videoUrls.clear();
+	api.forgetVideoStreams().catch(() => {});
+	return api.setSetting('video_quality', q);
+}
+
 export function wantedVideoHeight() {
 	const px = appearance.classicPlayer
 		? (window.innerHeight - 176) * 0.85
@@ -118,7 +150,9 @@ export function videoUrlFor(videoId: string): Promise<string | null> {
 	if (!p) {
 		// Silent on failure: a null answer is the ordinary case (the track has no video stream),
 		// and the artwork staying put is already the right thing to show.
-		p = api.videoStream(videoId, wantedVideoHeight()).catch(() => null);
+		p = videoHeight()
+			.then((h) => api.videoStream(videoId, h))
+			.catch(() => null);
 		if (videoUrls.size >= 8) videoUrls.delete(videoUrls.keys().next().value!);
 		videoUrls.set(videoId, p);
 	}
@@ -1585,7 +1619,15 @@ export function initApp(mini = false): () => void {
 			if (v === 0 && playback.volume > 0) preMute = playback.volume;
 			playback.volume = v;
 		}),
-		api.onPlaybackError((msg) => toast.error(msg)),
+		api.onPlaybackError(async (msg) => {
+			// Android: a local file that can't be opened because the audio-files permission is
+			// gone (refused, or revoked in Settings) says that, not "the stream link was refused".
+			if (isAndroid && playback.now && api.isLocalId(playback.now.videoId)) {
+				const access = await api.localAudioAccess().catch(() => null);
+				if (access === false) return toast.error(t('local.access_needed'));
+			}
+			toast.error(msg);
+		}),
 		api.onPlaybackNotice((msg) => toast(msg)), // auto-skipped an unplayable track
 		api.onCoverError((msg) => toast.error(msg)), // playlist artwork YouTube wouldn't take
 		api.onLocalChanged(forgetLocal), // a local file turned out to be gone — drop it everywhere
@@ -1643,6 +1685,7 @@ export function initApp(mini = false): () => void {
 			prefs.musicVideos = s.music_videos === 'true';
 			prefs.nativeVideo = s.native_video === 'true';
 			prefs.ambient = s.ambient_light === 'true';
+			if (s.video_quality === 'high' || s.video_quality === 'low') prefs.videoQuality = s.video_quality;
 			prefs.discordRpc = s.discord_rpc === 'true';
 			prefs.autoplay = s.autoplay !== 'false';
 			prefs.scrobbling = parseScrobbleConfig(s.lastfm_config).enabled;

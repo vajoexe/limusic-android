@@ -104,6 +104,13 @@ pub async fn switch_version(state: St<'_>) -> Result<(), String> {
     Ok(())
 }
 
+/// The phone's mini player was swiped down: end the session if nothing is playing
+/// (`AppState::dismiss_session`). `false` means it was left alone.
+#[tauri::command]
+pub async fn dismiss_session(state: St<'_>) -> Result<bool, String> {
+    Ok(state.inner().clone().dismiss_session().await)
+}
+
 /// Remove an upcoming track from the queue (not the one playing). Guests are add-only — blocked
 /// inside AppState.
 #[tauri::command]
@@ -242,7 +249,7 @@ pub async fn get_queue(state: St<'_>) -> Result<serde_json::Value, String> {
 /// `visitor_data`) and internal blobs (`queue_json`, `queue_index`, `queue_position`) never cross
 /// into the webview: they'd otherwise ship the login credential to the renderer on every open, and
 /// the webview can't overwrite them either.
-const UI_SETTINGS: [&str; 32] = [
+const UI_SETTINGS: [&str; 33] = [
     "volume",
     "proxy",
     "quality",
@@ -266,6 +273,7 @@ const UI_SETTINGS: [&str; 32] = [
     "music_videos",
     "videos_first",
     "ambient_light",
+    "video_quality",
     "sticky_shuffle",
     "shuffle_whole_queue",
     "system_titlebar",
@@ -356,6 +364,13 @@ pub async fn native_video_rect(
 /// The player view calls this when the `<video>` element fails to load, which is what an expired
 /// or revoked googlevideo link looks like from the webview. It also sends that track's next resolve
 /// to VISIONOS first, so a WEB_REMIX URL that failed is not rebuilt from the same reply.
+/// The video quality changed: forget every resolved music video URL so the next one is asked for
+/// at the new height. Nothing is marked failed (that is `forget_video_stream`'s job).
+#[tauri::command]
+pub fn forget_video_streams(state: St<'_>) {
+    state.forget_video_urls();
+}
+
 #[tauri::command]
 pub async fn forget_video_stream(state: St<'_>, video_id: String) -> Result<(), String> {
     state.forget_video_url(&video_id);
@@ -371,6 +386,9 @@ pub async fn forget_video_stream(state: St<'_>, video_id: String) -> Result<(), 
 fn native_chrome(db: &crate::db::Db) -> &'static str {
     if cfg!(target_os = "macos") {
         "overlay"
+    } else if cfg!(target_os = "android") {
+        // The system draws the window (status bar, DeX caption bar): no buttons or corners of ours.
+        "on"
     } else if db.get_setting("system_titlebar").as_deref() == Some("true") {
         "on"
     } else {
@@ -412,6 +430,8 @@ pub async fn set_setting(
     key: String,
     value: String,
 ) -> Result<(), String> {
+    #[cfg(mobile)]
+    let _ = &app;
     if !UI_SETTINGS.contains(&key.as_str()) {
         return Err(format!("unknown setting: {key}"));
     }
@@ -425,8 +445,13 @@ pub async fn set_setting(
                 "autostart: a dev build can't register itself, use an installed build".into()
             );
         }
+        #[cfg(mobile)]
+        return Err("autostart: starting with the system isn't available on Android".into());
+        #[cfg(desktop)]
         use tauri_plugin_autostart::ManagerExt;
+        #[cfg(desktop)]
         let al = app.autolaunch();
+        #[cfg(desktop)]
         let res = if value == "true" {
             al.enable()
         } else if al.is_enabled().unwrap_or(false) {
@@ -434,6 +459,7 @@ pub async fn set_setting(
         } else {
             Ok(())
         };
+        #[cfg(desktop)]
         res.map_err(|e| format!("autostart: {e}"))?;
     }
     state.db.set_setting(&key, &value);
@@ -497,7 +523,7 @@ pub async fn set_setting(
     }
     // Hand the frame back to the compositor (or take it again). macOS is not on this path: its
     // titlebar style is fixed at window creation, so the setting is hidden there.
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(not(any(target_os = "macos", mobile)))]
     if key == "system_titlebar" {
         use tauri::Manager;
         if let Some(w) = app.get_webview_window("main") {
@@ -568,9 +594,16 @@ pub async fn get_stream_clients() -> Result<Vec<String>, String> {
 /// general "give the page a URL for any path on this machine" — today only the main window holds a
 /// capability to call commands at all, and this stays safe if that ever widens.
 #[tauri::command]
-pub async fn allow_font_file(app: tauri::AppHandle, path: String) -> Result<(), String> {
+pub async fn allow_font_file(app: tauri::AppHandle, path: String) -> Result<String, String> {
     use tauri::Manager;
     const FONT_EXTS: [&str; 4] = ["ttf", "otf", "woff", "woff2"];
+    // Android's picker answers with a `content://` URI, which no `@font-face` can load: the font is
+    // copied into the app's data under its own name, and that path is what the theme keeps.
+    #[cfg(target_os = "android")]
+    let path = {
+        let dir = app.path().app_data_dir().map_err(|e| e.to_string())?.join("fonts");
+        crate::android::copy_content(&path, &dir)?
+    };
     let p = std::path::Path::new(&path);
     let ext = p.extension().and_then(|e| e.to_str()).unwrap_or_default().to_ascii_lowercase();
     if !FONT_EXTS.contains(&ext.as_str()) {
@@ -588,7 +621,7 @@ pub async fn allow_font_file(app: tauri::AppHandle, path: String) -> Result<(), 
     if let Ok(real) = p.canonicalize() {
         let _ = scope.allow_file(real);
     }
-    Ok(())
+    Ok(path)
 }
 
 // --- app icon (#173) -------------------------------------------------------------------------
@@ -740,6 +773,40 @@ pub async fn login_webview(state: St<'_>, add_account: Option<bool>) -> Result<(
     Ok(())
 }
 
+/// Sign in with a `Cookie` header the user copied from a signed-in music.youtube.com tab
+/// (context/15's paste path). Android's fallback for when Google's sign-in page
+/// (`session::open_login`, `SignInActivity`) won't take an account. Goes through the same
+/// `AppState::sign_in` as the webview login, so validation, rollback on failure and the multi-channel picker are all shared. `true` means
+/// the account has more than one channel and the picker (`account-selection-required`) is next.
+///
+/// The value is a credential: it is never logged, and a copied `Cookie: ` prefix is dropped.
+#[tauri::command]
+pub async fn sign_in_cookie(state: St<'_>, cookie: String) -> Result<bool, String> {
+    let cookie = cookie.trim();
+    let cookie = cookie
+        .strip_prefix("Cookie:")
+        .or_else(|| cookie.strip_prefix("cookie:"))
+        .unwrap_or(cookie)
+        .trim()
+        .to_owned();
+    match state.inner().sign_in(cookie, None).await? {
+        crate::state::SignInOutcome::Complete => Ok(false),
+        crate::state::SignInOutcome::SelectionRequired => Ok(true),
+    }
+}
+
+/// The area the page has to keep clear of system UI, in CSS pixels: `[top, right, bottom, left]`.
+/// Android only (the activity draws edge to edge, under the status and navigation bars, and the
+/// keyboard counts as a bottom bar while it is open); zeros everywhere else. Updates arrive as the
+/// `window-insets` event.
+#[tauri::command]
+pub fn window_insets() -> [f32; 4] {
+    #[cfg(target_os = "android")]
+    return crate::android::insets();
+    #[cfg(not(target_os = "android"))]
+    [0.0; 4]
+}
+
 /// The current track, play state, position and duration in one shot. Events are the normal
 /// channel; this is for a webview that started after them (the mini player, or the main window
 /// on a cold start, where the queue is restored before the UI subscribes).
@@ -790,9 +857,13 @@ pub async fn show_main(state: St<'_>, window: tauri::WebviewWindow) -> Result<bo
     if crate::should_start_minimized(&state.db) {
         return Ok(false);
     }
-    window.show().map_err(|e| e.to_string())?;
-    window.unminimize().map_err(|e| e.to_string())?;
-    window.set_focus().map_err(|e| e.to_string())?;
+    // Android: the activity is already on screen by the time its webview can mount the SPA.
+    #[cfg(desktop)]
+    {
+        window.show().map_err(|e| e.to_string())?;
+        window.unminimize().map_err(|e| e.to_string())?;
+        window.set_focus().map_err(|e| e.to_string())?;
+    }
     crate::tray::set_main_visible(window.app_handle(), true);
     Ok(true)
 }
@@ -1872,6 +1943,17 @@ pub async fn set_playlist_cover(
         }
         return Ok(CoverResult { cover: None, thumbnail });
     };
+    // Android's picker answers with a `content://` URI: brought in as a file first (its name says
+    // JPEG or PNG), which `store_cover` then copies like any other, and dropped after.
+    #[cfg(target_os = "android")]
+    if src.starts_with("content://") {
+        use tauri::Manager;
+        let dir = app.path().app_cache_dir().map_err(|e| e.to_string())?.join("picked");
+        let local = crate::android::copy_content(&src, &dir)?;
+        let result = store_cover(&app, &state, &playlist_id, std::path::Path::new(&local));
+        let _ = std::fs::remove_file(&local);
+        return result;
+    }
     store_cover(&app, &state, &playlist_id, std::path::Path::new(&src))
 }
 
@@ -2203,6 +2285,12 @@ pub async fn import_read(
         return crate::import::read_link(&link).await;
     }
     let path = path.ok_or("nothing_read")?;
+    // Android's picker answers with a `content://` URI; its name is what says zip, JSON or CSV.
+    #[cfg(target_os = "android")]
+    if path.starts_with("content://") {
+        let (bytes, name) = crate::android::read_content(&path)?;
+        return crate::import::read_file(&bytes, &name);
+    }
     let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
     crate::import::read_file(&bytes, &path)
 }
@@ -2305,6 +2393,33 @@ pub async fn import_resolve(
 #[tauri::command]
 pub async fn get_local_library(state: St<'_>) -> Result<crate::local::LocalLibrary, String> {
     scan_local(&state).await
+}
+
+/// Android: pick a music folder with the system picker (asking for the audio-files permission
+/// first). The desktop picks with the dialog plugin instead, whose folder picker Android lacks.
+#[tauri::command]
+pub async fn pick_local_folder() -> Result<serde_json::Value, String> {
+    #[cfg(target_os = "android")]
+    return serde_json::to_value(crate::android::pick_folder().await?).map_err(|e| e.to_string());
+    #[cfg(not(target_os = "android"))]
+    Err("The system folder picker is Android-only".into())
+}
+
+/// Android: may the app read audio files (`None` before the activity has said, and on the
+/// desktop, where there's nothing to grant). Changes arrive as the `audio-access` event.
+#[tauri::command]
+pub fn local_audio_access() -> Option<bool> {
+    #[cfg(target_os = "android")]
+    return crate::android::audio_access();
+    #[cfg(not(target_os = "android"))]
+    None
+}
+
+/// Android: the app's page in Settings, to turn a refused permission back on.
+#[tauri::command]
+pub fn open_app_settings() {
+    #[cfg(target_os = "android")]
+    crate::android::open_app_settings();
 }
 
 #[tauri::command]
@@ -2504,8 +2619,15 @@ pub async fn release_notes() -> Result<Vec<ReleaseNote>, String> {
         draft: bool,
         prerelease: bool,
     }
+    // The Android port is released from its own repository, and its versions are all built on an
+    // upstream release candidate, so they go out as pre-releases and count here.
+    let (repo, with_prereleases) = if cfg!(target_os = "android") {
+        ("vajoexe/limusic-android", true)
+    } else {
+        ("SimoHypers/limusic", false)
+    };
     let releases: Vec<GhRelease> = crate::http::client()
-        .get("https://api.github.com/repos/SimoHypers/limusic/releases?per_page=20")
+        .get(format!("https://api.github.com/repos/{repo}/releases?per_page=20"))
         .header("User-Agent", concat!("Limusic/", env!("CARGO_PKG_VERSION")))
         .header("Accept", "application/vnd.github+json")
         .timeout(std::time::Duration::from_secs(15))
@@ -2519,7 +2641,7 @@ pub async fn release_notes() -> Result<Vec<ReleaseNote>, String> {
         .map_err(|e| e.to_string())?;
     let notes: Vec<ReleaseNote> = releases
         .into_iter()
-        .filter(|r| !r.draft && !r.prerelease)
+        .filter(|r| !r.draft && (with_prereleases || !r.prerelease))
         .map(|r| ReleaseNote {
             version: r.tag_name.trim_start_matches('v').to_string(),
             date: r
@@ -2551,16 +2673,24 @@ pub fn can_self_update(app: tauri::AppHandle) -> bool {
     }
     // Windows runs the NSIS installer and macOS swaps the .app bundle; both work however the app
     // was installed.
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(all(desktop, not(target_os = "linux")))]
     {
         let _ = app;
         true
+    }
+    // Android updates arrive as a new APK (store, F-Droid-style repo or sideload); the desktop
+    // updater's bundles are not installable there.
+    #[cfg(mobile)]
+    {
+        let _ = app;
+        false
     }
 }
 
 /// The beta channel's manifest. `beta` is a permanent prerelease holding nothing but this file, and
 /// the release workflows move it to the newest release candidate, or to the newest release once that
 /// is ahead, so the URL never changes.
+#[cfg(desktop)]
 const BETA_MANIFEST: &str =
     "https://github.com/SimoHypers/limusic/releases/download/beta/latest.json";
 
@@ -2585,6 +2715,14 @@ pub struct BetaUpdate {
 /// Any different version counts, same as `allowDowngrades` on stable: the pointer only moves forward
 /// by itself, so a lower version there is a beta rollback somebody made on purpose.
 #[tauri::command]
+#[cfg(mobile)]
+pub async fn check_beta_update(webview: tauri::Webview) -> Result<Option<BetaUpdate>, String> {
+    let _ = webview;
+    Err("The in-app updater is desktop-only. Android updates come as a new APK.".into())
+}
+
+#[tauri::command]
+#[cfg(desktop)]
 pub async fn check_beta_update(webview: tauri::Webview) -> Result<Option<BetaUpdate>, String> {
     use tauri::Manager;
     use tauri_plugin_updater::UpdaterExt;
@@ -2642,7 +2780,12 @@ pub fn diagnostics_summary(app: tauri::AppHandle, state: St<'_>) -> String {
 /// when it is too long to paste comfortably.
 #[tauri::command]
 pub fn save_diagnostics(app: tauri::AppHandle, state: St<'_>, path: String) -> Result<(), String> {
-    std::fs::write(&path, crate::diagnostics::report(&app, &state.db)).map_err(|e| e.to_string())
+    let report = crate::diagnostics::report(&app, &state.db);
+    // Android's save picker answers with a `content://` URI, written through the ContentResolver.
+    #[cfg(target_os = "android")]
+    return crate::android::write_content(&path, report.as_bytes());
+    #[cfg(not(target_os = "android"))]
+    std::fs::write(&path, report).map_err(|e| e.to_string())
 }
 
 /// The webview's own errors, into the same log file as everything else. Without this a blank
@@ -2746,6 +2889,17 @@ pub async fn listenbrainz_profile(
 /// manager's shortcut) is left alone both ways, so closing theater doesn't drop the user out of a
 /// fullscreen they chose (#485).
 #[tauri::command]
+#[cfg(mobile)]
+pub fn theater_fullscreen(window: tauri::WebviewWindow, on: bool) -> Result<(), String> {
+    // Immersive mode: the system bars slide away and a swipe from the edge brings them back over
+    // the player. The activity keeps its window, so nothing about the layout has to be restored.
+    let _ = window;
+    crate::android::set_immersive(on);
+    Ok(())
+}
+
+#[tauri::command]
+#[cfg(desktop)]
 pub fn theater_fullscreen(window: tauri::WebviewWindow, on: bool) -> Result<(), String> {
     use std::sync::atomic::{AtomicBool, Ordering};
 

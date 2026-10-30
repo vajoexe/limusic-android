@@ -22,6 +22,7 @@
 </script>
 
 <script lang="ts">
+	import { platform } from '$lib/platform.svelte';
 	import { HugeiconsIcon } from '@hugeicons/svelte';
 	import { SearchList01Icon, Cancel01Icon } from '@hugeicons/core-free-icons';
 	import { t } from '$lib/i18n.svelte';
@@ -29,12 +30,22 @@
 	let {
 		value = $bindable(''),
 		placeholder = t('common.search_this_list'),
-		onfocus
-	}: { value?: string; placeholder?: string; onfocus?: () => void } = $props();
+		onfocus,
+		wide = false
+	}: {
+		value?: string;
+		placeholder?: string;
+		onfocus?: () => void;
+		/** Spans its row on a phone (a tab's own search, not one tucked in a header's corner). */
+		wide?: boolean;
+	} = $props();
+	const full = $derived(wide && platform.compact);
 </script>
 
 <div
-	class="flex items-center gap-2 rounded-full border bg-background/80 py-1.5 pl-3 pr-2 shadow-sm backdrop-blur focus-within:border-accent"
+	class="flex {full
+		? 'w-full'
+		: ''} items-center gap-2 rounded-full border bg-background/80 py-1.5 pl-3 pr-2 shadow-sm backdrop-blur focus-within:border-accent"
 >
 	<HugeiconsIcon
 		icon={SearchList01Icon}
@@ -46,7 +57,7 @@
 		{placeholder}
 		aria-label={placeholder}
 		{onfocus}
-		class="w-48 min-w-0 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+		class="{full ? 'flex-1' : 'w-48'} min-w-0 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
 		onkeydown={(e) => e.key === 'Escape' && (value = '')}
 	/>
 	<!-- Holds its 1rem either way, so typing doesn't resize the box. -->

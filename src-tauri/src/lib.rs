@@ -1,5 +1,7 @@
 //! Limusic Tauri app. Wires transport + player + db + orchestrator behind the command boundary.
 
+#[cfg(target_os = "android")]
+mod android;
 mod appicon;
 mod audioproxy;
 mod blocked;
@@ -8,7 +10,10 @@ mod commands;
 mod db;
 mod diagnostics;
 mod discord;
+// Desktop window/tray/webview machinery that Android compiles but never reaches.
+#[cfg_attr(mobile, allow(dead_code))]
 mod hotkeys;
+#[cfg_attr(mobile, allow(dead_code))]
 mod http;
 mod import;
 #[cfg(target_os = "linux")]
@@ -20,6 +25,7 @@ mod local;
 mod lyrics;
 mod matugen;
 mod media;
+#[cfg_attr(mobile, allow(dead_code))]
 mod mini;
 #[cfg(target_os = "linux")]
 mod nativevideo;
@@ -30,14 +36,17 @@ mod notify;
 mod orchestrator;
 mod potoken;
 mod romanize;
+#[cfg_attr(mobile, allow(dead_code))]
 mod session;
 mod spotify;
 mod state;
 mod stats;
 #[cfg(target_os = "windows")]
 mod taskbar;
+#[cfg_attr(mobile, allow(dead_code))]
 mod tray;
 mod videoproxy;
+#[cfg_attr(mobile, allow(dead_code))]
 mod webview;
 
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -343,6 +352,7 @@ pub(crate) fn tune_webview_labelled(app: &tauri::AppHandle, label: &str, media: 
 ///
 /// Wayland gives the app no real position and ignores `center`, which is fine: the compositor
 /// places the window there, so the bug cannot happen.
+#[cfg(desktop)]
 fn keep_on_screen(w: &tauri::WebviewWindow) {
     let (Ok(p), Ok(size)) = (w.outer_position(), w.outer_size()) else { return };
     if mini::on_a_display(w, p, size) {
@@ -361,7 +371,6 @@ fn keep_on_screen(w: &tauri::WebviewWindow) {
     }
 }
 
-#[cfg_attr(mobile, tauri::mobile_entry_point)]
 /// Logs to stdout **and** to `<app data>/limusic.log`, truncated each launch (the previous run is
 /// kept as `limusic.log.1`).
 ///
@@ -390,10 +399,16 @@ fn init_logging(dir: &std::path::Path) {
     let file_layer = file.map(|f| {
         tracing_subscriber::fmt::layer().with_ansi(false).with_writer(f).with_filter(filter())
     });
-    tracing_subscriber::registry()
-        .with(tracing_subscriber::fmt::layer().with_filter(filter()))
-        .with(file_layer)
-        .init();
+    // Android has no stdout anyone reads; the console copy goes to logcat instead.
+    #[cfg(not(target_os = "android"))]
+    let console = tracing_subscriber::fmt::layer().with_filter(filter());
+    #[cfg(target_os = "android")]
+    let console = tracing_subscriber::fmt::layer()
+        .with_ansi(false)
+        .without_time()
+        .with_writer(android::Logcat)
+        .with_filter(filter());
+    tracing_subscriber::registry().with(console).with(file_layer).init();
 }
 
 /// Raise the open-file soft limit to the hard limit, capped.
@@ -528,6 +543,7 @@ fn should_start_minimized(db: &Db) -> bool {
 /// Tauri entry point. Applies the platform boot fixes (open-fd limit, NVIDIA/WebKit env), restores
 /// the persisted session, wires every command and plugin, and runs the event loop. context/01
 /// §startup.
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // Must happen before any webview exists: the limit is inherited by the web processes WebKit
     // forks, and cannot be raised for them afterwards.
@@ -604,6 +620,7 @@ pub fn run() {
         }
     }
 
+    #[cfg_attr(mobile, allow(unused_mut))]
     let mut builder = tauri::Builder::default();
 
     // Must be the first plugin registered (its documented requirement). A second launch —
@@ -616,6 +633,7 @@ pub fn run() {
     // the two fight over it, which is what the guard exists to prevent:
     //
     //     LIMUSIC_MULTI=1 XDG_DATA_HOME=/tmp/limusic-b ./target/debug/limusic-app
+    #[cfg(desktop)]
     if std::env::var_os("LIMUSIC_MULTI").is_none() {
         builder = builder.plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
             tray::show_main(app);
@@ -626,7 +644,7 @@ pub fn run() {
         }));
     }
 
-    builder
+    let builder = builder
         // The hidden cipher webview's document (webview.rs). A registered scheme, because a
         // `data:` URL is not a document WebView2 will navigate to.
         .register_uri_scheme_protocol(webview::SCHEME, |_ctx, _req| {
@@ -635,7 +653,6 @@ pub fn run() {
                 .body(webview::HARNESS_HTML.as_bytes())
                 .expect("static harness response")
         })
-        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         // Folder picker for the local-music library (local.rs).
         .plugin(tauri_plugin_dialog::init())
@@ -643,7 +660,12 @@ pub fn run() {
         // (both `execCommand('copy')` and `navigator.clipboard`) behind its own policy, and on
         // Fedora every copy button in the app silently did nothing. The OS clipboard from the app
         // process has no such gate. See ui/src/lib/clipboard.ts.
-        .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(tauri_plugin_clipboard_manager::init());
+    // Updater, autostart, window state and global shortcuts have no mobile backend. Android gets
+    // its media-session bridge instead (android.rs, wired up in `setup`).
+    #[cfg(desktop)]
+    let builder = builder
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             Some(vec!["--autostart"]),
@@ -670,7 +692,8 @@ pub fn run() {
                     }
                 })
                 .build(),
-        )
+        );
+    builder
         .setup(|app| {
             let handle = app.handle().clone();
 
@@ -686,6 +709,8 @@ pub fn run() {
             let data_dir = app.path().app_data_dir().unwrap_or_else(|_| std::env::temp_dir());
             std::fs::create_dir_all(&data_dir).ok();
             init_logging(&data_dir);
+            #[cfg(target_os = "android")]
+            android::init(&handle);
             let cache_dir = data_dir.join("audio-cache");
             std::fs::create_dir_all(&cache_dir).ok();
 
@@ -737,7 +762,10 @@ pub fn run() {
                 let w =
                     http::proxied(tauri::WebviewWindowBuilder::from_config(&handle, config)?)
                         .build()?;
+                #[cfg(desktop)]
                 keep_on_screen(&w);
+                #[cfg(mobile)]
+                let _ = w;
             }
             let cookie = db.get_setting("session_cookie").filter(|s| !s.is_empty());
             let data_sync_id = state::persisted_data_sync_id(&db);
@@ -766,7 +794,7 @@ pub fn run() {
             it.set_hide_videos(db.get_setting("hide_videos").as_deref() == Some("true"));
             // Read while `db` is still ours; the window is decorated further down, once the rest of
             // the setup that could fail is out of the way.
-            #[cfg_attr(target_os = "macos", allow(unused_variables))]
+            #[cfg_attr(any(target_os = "macos", mobile), allow(unused_variables))]
             let system_titlebar = db.get_setting("system_titlebar").as_deref() == Some("true");
             it.set_blocked(blocked::block_list(&db));
             let clients = Clients::bundled();
@@ -882,6 +910,7 @@ pub fn run() {
             // pointing at nothing. So an installed build repoints an existing entry at itself.
             // Only an existing one: `is_enabled` is false after a Task Manager disable on Windows,
             // and that choice is the user's.
+            #[cfg(desktop)]
             if !tauri::is_dev() {
                 use tauri_plugin_autostart::ManagerExt;
                 let al = app.autolaunch();
@@ -1059,7 +1088,7 @@ pub fn run() {
             // is created undecorated, so this is the one place that reverses it; macOS never gets
             // here, its traffic lights come from `tauri.macos.conf.json`. Done before the SPA shows
             // the window, so the frame is already there rather than popping in.
-            #[cfg(not(target_os = "macos"))]
+            #[cfg(not(any(target_os = "macos", mobile)))]
             if system_titlebar {
                 if let Some(w) = app.get_webview_window("main") {
                     let _ = w.set_decorations(true);
@@ -1110,6 +1139,7 @@ pub fn run() {
             commands::play,
             commands::play_index,
             commands::switch_version,
+            commands::dismiss_session,
             commands::remove_from_queue,
             commands::clear_queued,
             commands::add_to_queue,
@@ -1128,6 +1158,7 @@ pub fn run() {
             commands::get_playback,
             commands::video_stream,
             commands::forget_video_stream,
+            commands::forget_video_streams,
             commands::native_video_rect,
             commands::ambient_frame,
             commands::get_matugen_theme,
@@ -1148,6 +1179,11 @@ pub fn run() {
             commands::switch_account,
             commands::sign_out,
             commands::login_webview,
+            commands::sign_in_cookie,
+            commands::window_insets,
+            commands::pick_local_folder,
+            commands::local_audio_access,
+            commands::open_app_settings,
             commands::get_google_accounts,
             commands::switch_google_account,
             commands::remove_google_account,

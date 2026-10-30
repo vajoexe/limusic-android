@@ -1,267 +1,220 @@
 <div align="center">
 
-<img src="./assets/docs/limusic-github-image.png" alt="Limusic Banner" width="100%">
+<img src="./src-tauri/icons/128x128@2x.png" alt="Limusic icon" width="128">
 
-# Limusic
+# Limusic for Android
 
-**A native desktop YouTube Music client. Rust + Tauri, ad-free, no Electron.**
-
-<p align="center">
-  <a href="https://github.com/SimoHypers/limusic/releases/latest"><img alt="GitHub Downloads" src="https://img.shields.io/github/downloads/SimoHypers/limusic/total?style=for-the-badge&label=DOWNLOADS&color=a4c400"></a>
-  <a href="https://github.com/SimoHypers/limusic/releases/latest"><img alt="GitHub Release" src="https://img.shields.io/github/v/release/SimoHypers/limusic?display_name=release&style=for-the-badge&color=a10935"></a>
-  <img alt="License" src="https://img.shields.io/github/license/SimoHypers/limusic?style=for-the-badge&color=1881cc">
-  <a href="https://hosted.weblate.org/engage/limusic/"><img alt="Translation status" src="https://img.shields.io/weblate/progress/limusic?server=https%3A%2F%2Fhosted.weblate.org&style=for-the-badge&label=TRANSLATED&color=6a3fb5"></a>
-  <a href="https://simohypers.github.io/limusic/"><img alt="Website" src="https://img.shields.io/badge/WEBSITE-limusic-e5486e?style=for-the-badge"></a>
-  <a href="https://ko-fi.com/simohypers"><img alt="Support on Ko-fi" src="https://img.shields.io/badge/KO--FI-support-ff5e5b?style=for-the-badge&logo=kofi&logoColor=white"></a>
-  <br>
-  <img alt="Linux" src="https://img.shields.io/badge/Linux-FCC624?style=for-the-badge&logo=linux&logoColor=black">
-  <img alt="Windows" src="https://img.shields.io/badge/Windows-0078D6?style=for-the-badge&logoColor=white">
-  <img alt="macOS" src="https://img.shields.io/badge/macOS-000000?style=for-the-badge&logo=apple&logoColor=white">
-  <img alt="Tauri 2" src="https://img.shields.io/badge/Tauri_2-24C8D8?style=for-the-badge&logo=tauri&logoColor=white">
-  <img alt="Rust" src="https://img.shields.io/badge/Rust-000000?style=for-the-badge&logo=rust&logoColor=white">
-</p>
-
-**Limusic** talks directly to YouTube's internal API and plays audio through libmpv: no bundled
-browser runtime, no backend server, no ads in the audio. It started as a desktop rebuild of the
-playback engine behind [Metrolist](https://github.com/mostafaalagamy/Metrolist), an Android
-YouTube Music client, and grew from there.
+An unofficial Android port of [Limusic](https://github.com/SimoHypers/limusic),
+the YouTube Music client by SimoHypers.
 
 </div>
 
----
+This is the desktop app's code running on a phone. The Rust core, the SvelteKit
+interface and the libmpv playback engine are the same ones the desktop app uses.
+The port adds a phone layout, a media notification, Android sign-in and the
+platform glue needed for all of that to work. Wherever it could, it changes how
+the app looks and leaves how it works alone.
 
-## Features
-
-- **Ad-free playback**: streams come straight from YouTube's API, ads never do
-- **Search & browse**: songs, albums, artists, playlists and the YTM home feed, with results previewing as you type
-- **Sign in** with your YouTube Music account: in-app Google login or cookie-paste, several accounts at once with switching between them
-- **Your library**: playlists, liked songs, saved albums and artists, your uploads, and write actions (like, add to playlist, create/edit/delete playlists including cover art, subscribe, save to library)
-- **History**: everything you have played, in YouTube Music's own day buckets
-- **Gapless playback** with loudness normalization, powered by libmpv
-- **Tempo, pitch and reverb**: adjust playback speed and pitch, add reverb with independent dry/wet controls, and save custom presets on this device.
-- **Queue** with radio/automix continuation, drag to reorder, restored across restarts
-- **Synced lyrics**: side panel with auto-scroll and click-to-jump, word by word where the source has the timings, with translations under each line
-- **Music videos**: optional, the video plays where the artwork sits, with the same gapless audio behind it
-- **Mini Player and theater mode**: shrink to a strip that keeps playing, or go fullscreen with cover and lyrics side by side
-- **Local Music**: play your own files, with all metadata still intact
-- **Last.fm scrobbling**: connect once from the title bar, every play is scrobbled
-- **ListenBrainz scrobbling**: paste a user token in the Scrobbling settings, same plays go there too
-- **Discord Rich Presence**: artwork, live progress bar, one click to toggle
-- **OS media keys** and now-playing integration (MPRIS on Linux, SMTC on Windows, plus playback buttons on the Windows taskbar preview)
-- **System tray**: close the window, keep the music; play/pause and skip from the tray, optional start-on-login
-- **Listen Together**: synced listening rooms over a small self-hosted relay
-- **Keyboard and mouse**: `Ctrl+K` searches from anywhere, `Ctrl+H` lists every shortcut, right-click menus throughout, `Ctrl` and the wheel zooms the interface
-- **Eighteen languages**: English, German, Spanish, French, Indonesian, Italian, Japanese, Korean, Polish, Brazilian Portuguese, Romanian, Russian, Tamil, Turkish, Ukrainian, Vietnamese, and Simplified and Traditional Chinese, with more in progress on [Weblate](https://hosted.weblate.org/projects/limusic/)
-- **Self-updating builds** (AppImage on Linux, setup.exe on Windows, .app on macOS)
-- **Make it yours**: accent palettes, custom colors, your own fonts, corner roundness, a custom app icon, and an adaptive theme that recolors the app from the playing cover
-
----
-
-## Screenshots
+It is a community port. It is not an official Limusic release, and the Limusic
+developers do not support it. Please don't report problems with this port in
+the upstream repository.
 
 <table>
   <tr>
-    <td><img src="website/src/assets/screen-playlist.webp" alt="A playlist in Limusic"></td>
-    <td><img src="website/src/assets/screen-lyrics.webp" alt="Word-by-word synced lyrics"></td>
+    <td><img src="screenshots/browse.png" alt="Home, search and an artist page on a phone"></td>
   </tr>
   <tr>
-    <td><img src="website/src/assets/screen-album.webp" alt="An album page, colors adapted to the cover"></td>
-    <td><img src="website/src/assets/screen-video.webp" alt="A music video playing with lyrics alongside"></td>
+    <td><img src="screenshots/player.png" alt="The full-screen player with its lyrics and queue tabs"></td>
+  </tr>
+  <tr>
+    <td><img src="screenshots/landscape.png" alt="The player on a phone held sideways, with the queue beside the artwork"></td>
+  </tr>
+  <tr>
+    <td><img src="screenshots/settings.png" alt="Appearance and playback settings"></td>
   </tr>
 </table>
 
----
+The screenshots are 7680x4320. They are shown as PNG so they display in every
+browser. The [screenshots](screenshots) folder also has lossless JPEG XL copies
+(`.jxl`) with exactly the same pixels at about 30% less size.
 
-<h2 align="center">Download & Install</h2>
+## Status
 
-<p align="center">
-  <a href="https://github.com/SimoHypers/limusic/releases/latest">
-    <img src="https://img.shields.io/badge/GitHub_Releases-100000?style=for-the-badge&logo=github&logoColor=white" height="40">
-  </a>
-</p>
+Everything below was tested on a Samsung Galaxy S24 FE running Android 17, and
+on the Android 17 emulator. No other phones have been tested yet.
 
-| Platform | File | Notes |
-|---|---|---|
-| Windows | `-setup.exe` | Self-updating |
-| Windows | `.msi` | Plain installer, no auto-update |
-| Linux | `.AppImage` | Self-updating, libmpv bundled. Needs glibc 2.39+ (Ubuntu 24.04+, Debian 13+, Fedora 40+) |
-| Linux (Ubuntu/Debian) | `.deb` | No self-update. Needs Ubuntu 24.04+ / Debian 13+; apt pulls libmpv and webkit2gtk in for you |
-| Linux (Fedora/RHEL) | `.rpm` | Needs `mpv-libs` installed (`sudo dnf install mpv-libs`). No updates, redownload each release |
-| macOS (Apple Silicon) | `.dmg` | Self-updating. Unsigned, so the first launch needs `xattr -dr com.apple.quarantine /Applications/limusic.app` |
-| macOS (Intel) | none | Build from source, see [docs/BUILD-PLATFORMS.md](docs/BUILD-PLATFORMS.md) |
+What works:
 
-Community-maintained repositories, packaged and updated by their maintainers rather than by this project:
+- Home feed, search, artists, albums and playlists
+- Playback in the background and with the screen off, with the media
+  notification and media keys (lock screen controls and Bluetooth buttons have
+  not been checked yet)
+- The queue, shuffle, repeat and autoplay radio
+- Synced lyrics, line by line and word by word
+- Music videos, with ambient light behind them, and a fallback to audio if a
+  video won't load
+- Song comments: reading, liking, replying and posting
+- Signing in with Google's own sign-in page, several accounts at once, and
+  pasting cookies as a fallback
+- Your library: likes, playlists, saved albums and artists
+- Local music from a folder you pick
+- Portrait and landscape, with a wider layout for tablets and desktop windows
 
-| Platform | Source | Notes |
-|---|---|---|
-| Linux (Arch) | [AUR](https://aur.archlinux.org/packages/limusic-bin) | `yay -S limusic-bin`. Maintained by [@xiryuudev](https://github.com/xiryuudev), updates through pacman |
-| Linux (Fedora COPR) | [COPR](https://copr.fedorainfracloud.org/coprs/oguzkarayemis/limusic/) | `sudo dnf copr enable oguzkarayemis/limusic` then `sudo dnf install limusic`. Maintained by [@oguzkarayemis](https://github.com/oguzkarayemis), updates through dnf |
-| Linux (openSUSE Tumbleweed) | [OBS](https://build.opensuse.org/package/show/home:itachi_re/limusic) | `sudo zypper ar -p 100 https://download.opensuse.org/repositories/home:/itachi_re/openSUSE_Tumbleweed/home:itachi_re.repo` then `sudo zypper install limusic`. Maintained by [@itachi-re](https://github.com/itachi-re), updates through zypper. The repo carries the maintainer's other packages too, so `-p 100` keeps it below the distro repos |
+What doesn't work, or works differently:
 
----
+- **Speed, pitch and reverb** are missing. The prebuilt libmpv this port uses
+  leaves out the audio filters they need.
+- **Loudness normalization** only turns loud tracks down. Quiet tracks stay as
+  they are, and there is no limiter. The desktop version does real
+  normalization, so this is a weaker substitute.
+- **Discord Rich Presence** is turned off. The Discord app for Android has no
+  way for another app to set your status. The only workaround uses your Discord
+  login token, which breaks Discord's terms, so this port doesn't use it.
+- **Sign-in** happens on Google's web sign-in page inside the app. Android's
+  account picker can't be used, because it gives out a different kind of login
+  than the one YouTube Music's web API accepts. If Google ever blocks the page,
+  pasting cookies still works.
+- **Tray, mini player window, global hotkeys, start on login and the
+  self-updater** are desktop features with no Android equivalent.
+- **Samsung DeX** should work through Android's desktop windowing, but it has
+  only been tried in the emulator so far.
+- If Android kills the app in the background, the notification can't restart
+  playback yet. Open the app again instead.
 
-## Scrobbling & Discord
+## Install
 
-Last.fm lives in the title bar, next to the window controls, and ListenBrainz connects from
-Settings ▸ Scrobbling. Both get the same cleaned-up track (the tab's preview shows what each
-play counts as).
+Download the APK from [Releases](https://github.com/vajoexe/limusic-android/releases)
+and open it on your phone. Android will ask you to allow installs from your browser
+or file manager the first time.
 
-- **Last.fm**: click the Last.fm mark, approve Limusic in the browser tab that
-  opens, and you're connected for good. Tracks scrobble at the halfway point (or
-  four minutes, whichever comes first), which is Last.fm's own rule. Click again
-  to see the account or disconnect.
-- **ListenBrainz**: open the Scrobbling settings, paste the user token from
-  [listenbrainz.org/settings](https://listenbrainz.org/settings/) and connect.
-  Plays submit as `playing_now` on start and one `single` listen at the same
-  halfway-or-four-minutes point. A new MetaBrainz account has to verify its email first, or
-  ListenBrainz turns every listen away (the Scrobbling tab says so).
-- **Discord**: click the Discord mark to toggle Rich Presence. Green dot means
-  it's live. The card shows the track, artist, album art, and a progress bar, and
-  it disappears when you pause.
+You need Android 8.0 or newer on a 64-bit ARM phone or tablet.
 
-Building from source? Last.fm needs your own API credentials, and they are not in
-the repo. Get a key at [last.fm/api/account/create](https://www.last.fm/api/account/create)
-and put it in `src-tauri/lastfm.keys`:
+Every release is signed with the same key. Its SHA-256 certificate fingerprint is:
+
+```
+EB:14:47:0C:C1:AD:37:7A:52:6A:93:F8:75:E4:1C:16:6E:61:D0:3D:53:9B:54:61:3F:39:BE:BB:55:F7:E8:85
+```
+
+You can check a download with `apksigner verify --print-certs limusic-*.apk`. If the
+fingerprint is different, the APK did not come from this repository.
+
+## Building
+
+You'll need:
+
+- The Android SDK with `platforms;android-37.0`, `build-tools;37.0.0`,
+  `ndk;28.2.13676358` and `platform-tools`
+- JDK 17
+- Rust with the `aarch64-linux-android` and `x86_64-linux-android` targets
+- The Tauri CLI: `cargo install tauri-cli --version '^2'`
+- Node.js and pnpm 10
+
+Then:
+
+```sh
+export ANDROID_HOME=/path/to/android-sdk
+source scripts/android/env.sh          # sets up the NDK, bindgen and JAVA_HOME
+scripts/android/fetch-libmpv.sh        # downloads libmpv, checks its SHA-256
+(cd ui && pnpm install --frozen-lockfile)
+
+# Debug build for the emulator
+cargo tauri android build --debug --target x86_64 --apk
+
+# Signed release build for phones (see Release signing below)
+scripts/android/build-release.sh
+```
+
+The APKs end up in `src-tauri/gen/android/app/build/outputs/apk/`. A release
+build made with plain `cargo tauri android build --target aarch64 --apk`, with
+no signing key set up, comes out unsigned.
+
+Debug builds are around 500 MB because the Rust library keeps its debug
+symbols. A release build is about 100 MB.
+
+### Release signing
+
+Release APKs are signed with a self-signed certificate, which is how Android
+apps outside the Play Store are normally signed. The certificate shows which key
+signed the app. It says nothing about Google having checked the publisher.
+Releases of this port are signed with the `vajoexe` key. Builds you make
+yourself will carry your own key.
+
+Android only installs an update over an existing app when both are signed with
+the same key. So every release has to be signed with the same private key, for
+as long as the app exists. If the key is lost, people have to uninstall the app,
+and lose its data, before they can install a build signed with a new key.
+
+To set up a key, once:
+
+```sh
+scripts/android/make-release-key.sh
+```
+
+It asks for a password and creates `~/.local/share/limusic/release.jks`, an RSA
+4096 key valid for 50 years. It also writes
+`src-tauri/gen/android/keystore.properties`, which holds only the keystore path
+and the key alias. If a keystore already exists there, the script stops instead
+of replacing it. `LIMUSIC_RELEASE_KEYSTORE`, `LIMUSIC_RELEASE_ALIAS` and
+`LIMUSIC_RELEASE_DNAME` change the defaults.
+
+To build a signed release:
+
+```sh
+scripts/android/build-release.sh
+```
+
+It asks for the keystore password, passes it to Gradle through the environment
+for that one build, and checks the result with `apksigner`. The password is not
+written to any file. In CI, set `LIMUSIC_ANDROID_STORE_FILE`,
+`LIMUSIC_ANDROID_KEY_ALIAS`, `LIMUSIC_ANDROID_STORE_PASSWORD` and
+`LIMUSIC_ANDROID_KEY_PASSWORD` from the CI's secret store instead.
+
+Keep the keystore out of the repository. `*.jks`, `*.keystore`, `*.p12` and
+`keystore.properties` are gitignored as a safety net. Back up the keystore and
+its password somewhere other than the build machine: for example the `.jks` file
+attached to an entry in an encrypted password manager, plus an offline copy on a
+USB drive kept apart from the password.
+
+Last.fm scrobbling needs your own API key, the same as the desktop app. Put it
+in `src-tauri/lastfm.keys`:
 
 ```
 LIMUSIC_LASTFM_API_KEY=your_key
 LIMUSIC_LASTFM_API_SECRET=your_secret
 ```
 
-Without that file everything else still builds and runs; the Last.fm button just
-reports that it isn't configured.
+The desktop build is unchanged. See [docs/BUILD-PLATFORMS.md](docs/BUILD-PLATFORMS.md)
+and the [upstream README](https://github.com/SimoHypers/limusic#readme) for
+Linux, Windows and macOS.
 
----
+## Credits
 
-## Lyrics
+Limusic was created by [SimoHypers](https://github.com/SimoHypers) and the
+Limusic contributors. Nearly all of this app is their work. This port only adds
+the Android pieces.
 
-Open the panel with the microphone button in the player bar, next to the queue
-button. It takes the same side of the window as the queue, so opening one closes
-the other.
+If you'd like to support the original developers, you can do so at
+[ko-fi.com/simohypers](https://ko-fi.com/simohypers). That money goes to them,
+not to this port.
 
-Lyrics come from [Boidu](https://boidu.dev) first, then
-[LRCLIB](https://lrclib.net), then YouTube Music's own timed lyrics, then
-Netease, QQ Music and Kugou, falling back to plain un-timed text when nobody has
-a synced version. Matching is keyed on the track's exact length, because popular
-songs exist as several cuts and the wrong one drifts a few seconds out. Results
-are cached locally, so replaying a track is instant.
-
-Boidu is the only source with per-word timings, which is what lets a line
-highlight word by word as it's sung. It goes first for that reason, which also
-means it is asked about every track you play. Turn it off in **Settings ->
-Playback -> Word-by-word lyrics** and the other sources still provide
-line-by-line lyrics. Netease additionally supplies translations, shown under
-each line where it has them.
-
-Note that YouTube Music's lyrics are licensed per region and are missing
-entirely in some countries. Where that's the case, LRCLIB does all the work.
-
----
-
-## Listen Together
-
-Synced listening with friends. Everyone streams their own audio from YouTube;
-the room only relays play/pause, seeks, track changes and the queue. One person
-hosts the relay:
-
-```bash
-cargo run -p sync-server        # plain WebSocket on 0.0.0.0:8080
-```
-
-Front it with something that terminates TLS (Tailscale Funnel, Cloudflare
-Tunnel), then paste the `wss://` URL into the Listen Together panel in the app.
-Rooms have join codes and the host approves every join and every track
-suggestion.
-
----
-
-## Translations
-
-Limusic is translated on [Weblate](https://hosted.weblate.org/engage/limusic/),
-who host it free for libre projects.
-
-<a href="https://hosted.weblate.org/engage/limusic/">
-  <img src="https://hosted.weblate.org/widget/limusic/ui/multi-auto.svg" alt="Translation status">
-</a>
-
-English, Spanish, French, Turkish, Brazilian Portuguese and Indonesian ship in
-the app today.
-The badge above shows everything else in flight.
-
-**Translate on Weblate, not in a pull request.** Weblate keeps its own copy of
-the catalogs, so a hand-edited `fr.json` merged here puts the two out of sync
-and the next batch of real translations arrives as a merge conflict. Weblate
-also shows you the English original beside each string, flags translations that
-went stale when the English changed, checks that placeholders like `{count}`
-survived, and opens the pull request for you. Anything untranslated falls back
-to English in the app, so partial work is safe to submit.
-
-`en.json` is the exception: it changes by hand, in whichever pull request
-changes the UI. Switching a finished language on in the picker takes a small
-code change too, see [CONTRIBUTING.md](CONTRIBUTING.md#translations).
-
----
-
-## Building from Source
-
-Fedora:
-
-```bash
-sudo dnf install mpv-libs mpv-libs-devel webkit2gtk4.1-devel \
-  gcc gcc-c++ make openssl-devel librsvg2-devel
-cd ui && pnpm install && cd ..
-cargo tauri build
-```
-
-Windows and macOS instructions live in [docs/BUILD-PLATFORMS.md](docs/BUILD-PLATFORMS.md).
-
----
-
-## How It Works, Briefly
-
-- A pure Rust crate speaks YouTube's InnerTube API, impersonating several
-  official client identities and falling back between them when one fails.
-- YouTube's stream URLs are protected by obfuscated JavaScript (the signature
-  cipher and the `n` parameter) and by BotGuard attestation. Limusic runs that
-  JavaScript where it expects to run, in a real webview, hidden, and never lets
-  any of it touch the UI process.
-- Audio goes through libmpv: gapless transitions, an on-disk cache, and
-  loudness normalization from YouTube's own metadata.
-- The UI is a SvelteKit SPA that only ever talks to the Rust core. It never
-  contacts YouTube itself.
-
----
-
-## Star History
-
-<a href="https://www.star-history.com/?repos=simohypers%2Flimusic&type=date&legend=top-left">
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=simohypers/limusic&type=date&theme=dark&legend=top-left" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=simohypers/limusic&type=date&legend=top-left" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=simohypers/limusic&type=date&legend=top-left" />
- </picture>
-</a>
-
----
-
-## Support
-
-Limusic is free and stays free. If it earned a coffee,
-[ko-fi.com/simohypers](https://ko-fi.com/simohypers) is where to leave one.
-
----
-
-## Disclaimer
-
-This project is not affiliated with, funded, authorized, endorsed by, or in
-any way associated with YouTube, Google LLC, or any of their affiliates and
-subsidiaries.
-
-All trademarks, service marks, and intellectual property rights referenced in
-this project belong to their respective owners.
-
----
+Playback uses [mpv](https://mpv.io) and [FFmpeg](https://ffmpeg.org), packaged
+for Android by [libmpv-android](https://github.com/jarnedemeulemeester/libmpv-android).
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) lists everything that ships
+inside the APK.
 
 ## License
 
-[GPL-3.0](LICENSE)
+GPL-3.0-or-later, the same as Limusic. See [LICENSE](LICENSE). The changes made
+for this port are described in [NOTICE](NOTICE).
+
+The APK includes a GPL build of FFmpeg, which is why the app as a whole is
+distributed under GPL version 3. Anyone who distributes the APK has to make the
+matching source code available too. This repository is that source for the app.
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) has links to the source of the
+bundled libraries.
+
+## Disclaimer
+
+This project is not affiliated with, funded, authorized or endorsed by YouTube,
+Google LLC or any of their affiliates. It is also not an official release from
+the Limusic project. All trademarks belong to their respective owners.

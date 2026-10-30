@@ -290,6 +290,7 @@
 			<TrackFilter
 				bind:value={query}
 				placeholder={t('common.search_your_songs')}
+				wide
 				onfocus={() => (searchOpened = true)}
 			/>
 		</div>

@@ -59,6 +59,7 @@
 	import { anchorMenu, fitMenu, NO_ANCHOR, toBody } from '$lib/menu';
 	import { t } from '$lib/i18n.svelte';
 	import { Checkbox } from './ui/checkbox';
+	import { platform } from '$lib/platform.svelte';
 
 	let {
 		available,
@@ -86,6 +87,9 @@
 
 <svelte:window onkeydown={(e) => open && e.key === 'Escape' && (open = false)} />
 
+<!-- Not in the phone shell: its rows drop the columns (TrackRow's `cols`), so a header would only
+     label the title. -->
+{#if !platform.compact}
 <div
 	class="sticky top-0 z-10 flex items-center gap-3 border-b bg-background px-2 py-1.5 text-xs font-medium text-muted-foreground"
 >
@@ -125,6 +129,7 @@
 		</button>
 	</div>
 </div>
+{/if}
 
 {#if open}
 	<!-- Moved to <body>: the list is a size container, which `position: fixed` would otherwise

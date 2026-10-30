@@ -18,7 +18,6 @@
 		PauseIcon,
 		ShuffleIcon,
 		RepeatIcon,
-		RepeatOne01Icon,
 		ThumbsUpIcon,
 		ThumbsDownIcon,
 		MusicNote01Icon,
@@ -31,6 +30,7 @@
 		GoBackward15SecIcon,
 		GoForward15SecIcon
 	} from '@hugeicons/core-free-icons';
+	import { RepeatForeverIcon } from '$lib/icons';
 	import { fade } from 'svelte/transition';
 	import * as api from '$lib/api';
 	import {
@@ -477,7 +477,7 @@
 					>
 						<HugeiconsIcon
 							icon={RepeatIcon}
-							altIcon={RepeatOne01Icon}
+							altIcon={RepeatForeverIcon}
 							showAlt={repeat === 'one'}
 							class="h-4 w-4"
 						/>

@@ -57,6 +57,7 @@
 	import { rowScroller } from '$lib/rows.svelte';
 	import { restoreTo } from '$lib/scrollrestore';
 	import { t } from '$lib/i18n.svelte';
+	import { platform } from '$lib/platform.svelte';
 	import { imp, updateFromSpotify } from '$lib/import.svelte';
 
 	import {
@@ -1181,7 +1182,13 @@
 			{@attach sc.attach}
 			{@attach (node) => dragScroll(node, PLAYLIST_ROW_MIME)}
 		>
-			<div class="relative flex min-h-[38vh] shrink-0 items-end gap-6 overflow-hidden p-6">
+			<!-- A phone stacks the cover over the title, which side by side got a column too narrow for
+			     its words; the filter gets the top strip to itself. -->
+			<div
+				class="relative flex shrink-0 overflow-hidden {platform.compact
+					? 'flex-col items-start gap-4 p-4 pt-16'
+					: 'min-h-[38vh] items-end gap-6 p-6'}"
+			>
 				<!-- The backdrop and its fade share one layer (`art-wash` on the wrapper): see HomeHero. -->
 				<div class="art-wash pointer-events-none absolute inset-0 overflow-hidden">
 					{#if backdrop}
@@ -1242,7 +1249,11 @@
 							</button>
 						{/if}
 					</div>
-					<h1 class="mt-1 font-heading text-4xl font-bold tracking-tight drop-shadow-lg">
+					<h1
+						class="mt-1 font-heading {platform.compact
+							? 'break-words text-3xl'
+							: 'text-4xl'} font-bold tracking-tight drop-shadow-lg"
+					>
 						{pl.title ?? t('common.playlist_singular')}
 					</h1>
 					{#if subtitle}<p class="mt-2 text-sm text-muted-foreground">{subtitle}</p>{/if}
@@ -1324,7 +1335,7 @@
 						</div>
 					</div>
 				</div>
-				<div class="absolute right-6 top-6">
+				<div class="absolute {platform.compact ? 'right-4 top-3' : 'right-6 top-6'}">
 					<TrackFilter
 						bind:value={query}
 						placeholder={t('common.search_this_playlist')}
@@ -1447,7 +1458,7 @@
 		</div>
 		<!-- Not while selecting: the selection bar sits in the same spot. -->
 		{#if away && !selection.active && appearance.nowPlayingPill}
-			<NowPlayingPill above={playingY < sc.scrollTop} onclick={toPlaying} />
+			<NowPlayingPill above={playingY < sc.scrollTop} onclick={toPlaying} overPage />
 		{/if}
 	{/if}
 </div>

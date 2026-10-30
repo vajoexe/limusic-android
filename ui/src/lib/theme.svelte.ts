@@ -324,8 +324,8 @@ export async function registerFontFiles(): Promise<void> {
 }
 
 /** Load a font file the user picked. Throws (for the caller to report) if it can't be granted. */
-export async function addFontFile(path: string): Promise<string> {
-	await allowFontFile(path);
+export async function addFontFile(picked: string): Promise<string> {
+	const path = await allowFontFile(picked);
 	if (!custom.fontFiles.includes(path)) custom.fontFiles.push(path);
 	persist();
 	await registerFontFiles();

@@ -14,10 +14,9 @@
 
 use std::sync::Arc;
 
-use tauri::{
-    AppHandle, Manager, PhysicalPosition, PhysicalSize, WebviewUrl, WebviewWindow,
-    WebviewWindowBuilder,
-};
+use tauri::{AppHandle, Manager, PhysicalPosition, PhysicalSize, WebviewWindow};
+#[cfg(desktop)]
+use tauri::{WebviewUrl, WebviewWindowBuilder};
 
 use crate::state::AppState;
 
@@ -39,6 +38,7 @@ const POS_KEY: &str = "mini_position";
 ///
 /// **Main thread only** — GTK wants window creation there, same rule as the login and cipher
 /// webviews. `commands::open_mini` does the hop.
+#[cfg(desktop)]
 pub fn open(app: &AppHandle) -> Result<(), String> {
     if let Some(w) = app.get_webview_window(LABEL) {
         let _ = w.show();
@@ -91,6 +91,14 @@ pub fn open(app: &AppHandle) -> Result<(), String> {
         crate::tray::set_main_visible(app, false);
     }
     Ok(())
+}
+
+/// Android runs one activity window and cannot float a second one over other apps without the
+/// overlay permission, which a music player has no business asking for. The media notification and
+/// lock-screen controls are the small player there.
+#[cfg(mobile)]
+pub fn open(_app: &AppHandle) -> Result<(), String> {
+    Err("The mini player isn't available on Android. Use the media notification instead.".into())
 }
 
 /// Switch the widget between its full and compact size, and remember the choice. The widget's

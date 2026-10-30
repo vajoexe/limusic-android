@@ -50,6 +50,7 @@
     import { thumb } from "$lib/thumb";
     import { anchorMenu, fitMenu, NO_ANCHOR, toBody } from "$lib/menu";
     import { t } from "$lib/i18n.svelte";
+    import { platform } from "$lib/platform.svelte";
 
     let album = $state<AlbumPage | null>(null);
     let loading = $state(true);
@@ -261,11 +262,13 @@
             ></div>
         </div>
 
-        <div class="absolute right-6 top-6 z-10">
+        <!-- A phone has no spare corner: the filter takes its own row above the header instead of
+             floating over the cover. -->
+        <div class={platform.compact ? "relative z-10 flex justify-end px-4 pt-3" : "absolute right-6 top-6 z-10"}>
             <TrackFilter bind:value={query} placeholder={t("common.search_this_album")} />
         </div>
 
-        <div class="relative flex flex-col gap-5 p-6 pt-10">
+        <div class="relative flex flex-col gap-5 {platform.compact ? 'p-4 pt-4' : 'p-6 pt-10'}">
             <div class="flex items-end gap-5">
                 <!-- Inline width/height so the size holds even against a stale dev-server CSS that -->
                 <!-- hasn't regenerated a newly-used spacing utility (would fall back to intrinsic size). -->
@@ -343,7 +346,11 @@
             {/if}
 
             <!-- Controls -->
-            <div class="relative flex items-center gap-3">
+            <div
+                class="relative flex items-center gap-3 {platform.compact
+                    ? 'flex-wrap [&>button]:whitespace-nowrap'
+                    : ''}"
+            >
                 <button
                     class="flex cursor-pointer items-center gap-2 rounded-full text-foreground bg-primary px-6 py-2.5 text-sm font-semibold transition hover:opacity-90 disabled:opacity-50"
                     onclick={() => playAll(null)}

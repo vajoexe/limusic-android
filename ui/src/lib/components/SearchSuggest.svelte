@@ -161,6 +161,7 @@
 	     the field behind it is the target. -->
 	{#if !value}
 		<kbd
+			data-kbd-hint
 			class="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 rounded border bg-muted px-1.5 py-0.5 font-mono text-[0.625rem] font-medium tracking-wide text-muted-foreground"
 		>
 			{MOD}K

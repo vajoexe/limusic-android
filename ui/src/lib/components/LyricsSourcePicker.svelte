@@ -3,6 +3,7 @@
 	// one click to keep one, a timing nudge, and a search for when YouTube's title is what went
 	// wrong. A pick lands on the lyrics behind the popover straight away, so they're the preview.
 	import { tick, untrack } from 'svelte';
+	import { fade } from 'svelte/transition';
 	import { HugeiconsIcon } from '@hugeicons/svelte';
 	import {
 		ArrowRight01Icon,
@@ -31,14 +32,41 @@
 		lyrics,
 		track,
 		open = $bindable(false),
-		onchange
+		onchange,
+		fill = false
 	}: {
 		lyrics: api.Lyrics | null;
 		track: api.LyricsTrack;
 		open?: boolean;
 		/** New lyrics for `videoId`; the view drops them if the song has moved on. */
 		onchange: (lyrics: api.Lyrics | null, videoId: string) => void;
+		/** Over the lyrics instead of in a popover (see the markup). */
+		fill?: boolean;
 	} = $props();
+
+	/** The filled picker closes like the popover does: on Escape (Android's Back sends one), which
+	 *  it takes so the player under it stays open (theater mode skips an Escape already handled),
+	 *  and on a touch anywhere outside it. Not on the trigger, which toggles it itself. */
+	let fillTrigger = $state<HTMLElement | null>(null);
+	function closeOnOutside(panel: HTMLElement) {
+		const onKey = (e: KeyboardEvent) => {
+			if (e.key !== 'Escape' || e.defaultPrevented) return;
+			e.preventDefault();
+			open = false;
+		};
+		const onDown = (e: PointerEvent) => {
+			const t = e.target as Node;
+			if (!panel.contains(t) && !fillTrigger?.contains(t)) open = false;
+		};
+		// Capture on the window: the player's own Escape listener sits on the document and was
+		// added first, so a plain one here would run after it had already closed the player.
+		window.addEventListener('keydown', onKey, true);
+		document.addEventListener('pointerdown', onDown, true);
+		return () => {
+			window.removeEventListener('keydown', onKey, true);
+			document.removeEventListener('pointerdown', onDown, true);
+		};
+	}
 
 	/** One step of the timing nudge. A quarter second is under what anyone hears as early. */
 	const STEP_MS = 250;
@@ -195,256 +223,309 @@
 	}
 </script>
 
-<Popover.Root bind:open>
-	<Popover.Trigger
+{#if fill}
+	<!-- On a phone on its side the popover had a sliver of height above the footer. There the
+	     picker covers the lyrics it belongs to instead (LyricsView's box is `relative`), and Back
+	     or Escape closes it like the popover. -->
+	<button
+		type="button"
 		class="group -ml-2 flex min-w-0 cursor-pointer items-center gap-1.5 rounded-full py-0.5 pl-2 pr-1.5 transition-colors hover:bg-foreground/10 hover:text-foreground data-[state=open]:bg-foreground/10 data-[state=open]:text-foreground"
 		title={lyrics?.pinned ? t('lyrics.chosen') : undefined}
+		data-state={open ? 'open' : 'closed'}
+		bind:this={fillTrigger}
+		onclick={() => (open = !open)}
 	>
-		{#if !lyrics}
-			<HugeiconsIcon icon={Search01Icon} class="h-3.5 w-3.5 shrink-0" />
-		{/if}
-		<span class="truncate">{attribution}</span>
-		{#if lyrics?.pinned}
-			<HugeiconsIcon icon={PinIcon} class="h-3 w-3 shrink-0 text-primary" />
-		{/if}
-		{#if offset}
-			<span class="shrink-0 font-medium tabular-nums text-primary">{offsetLabel}</span>
-		{/if}
-		<HugeiconsIcon
-			icon={ArrowUp01Icon}
-			class="h-3 w-3 shrink-0 opacity-60 transition-transform group-data-[state=open]:rotate-180"
-		/>
-	</Popover.Trigger>
-	<Popover.Content
-		side="top"
-		align="start"
-		sideOffset={8}
-		class="max-h-[min(40rem,var(--bits-popover-content-available-height))] w-[22rem] max-w-[calc(100vw-2rem)] gap-0 overflow-hidden p-0"
-	>
-		<div class="flex items-start gap-3 border-b px-4 pb-3 pt-3.5">
-			<div class="min-w-0 flex-1">
-				<p class="font-heading text-sm font-semibold">{t('lyrics.sources_title')}</p>
-				<p class="mt-0.5 text-xs leading-relaxed text-muted-foreground">{t('lyrics.sources_hint')}</p>
-			</div>
-			<Button
-				variant="ghost"
-				size="icon-sm"
-				class="-mr-1.5 -mt-1 shrink-0 text-muted-foreground"
-				aria-label={t('lyrics.open_settings')}
-				title={t('lyrics.open_settings')}
-				onclick={openSettings}
-			>
-				<HugeiconsIcon icon={Settings02Icon} class="h-4 w-4" />
-			</Button>
-		</div>
-
+		{@render label()}
+	</button>
+	{#if open}
+		<!-- Fades in only: on the way out it leaves at once, so Back's bookkeeping (+layout) never
+		     sees a closed panel still marked open. -->
 		<div
-			class="min-h-0 flex-1 overflow-y-auto p-1.5"
-			role="radiogroup"
-			aria-label={t('lyrics.sources_title')}
+			in:fade={{ duration: 150 }}
+			data-popover-content
+			data-state="open"
+			class="absolute inset-0 z-20 flex flex-col overflow-hidden rounded-xl border bg-popover text-popover-foreground shadow-md"
+			{@attach closeOnOutside}
 		>
-			{#if query}
-				<div class="mx-1 mb-1.5 flex items-center gap-2 rounded-lg bg-primary/8 px-2.5 py-1.5 text-xs">
-					<HugeiconsIcon icon={Search01Icon} class="h-3.5 w-3.5 shrink-0 text-primary" />
-					<span class="min-w-0 flex-1 truncate">
-						{t('lyrics.search_results', {
-							query: query.artists ? `${query.title} · ${query.artists}` : query.title
-						})}
-					</span>
-					<button
-						class="shrink-0 cursor-pointer font-medium text-primary hover:text-primary/80"
-						onclick={clearSearch}
-					>
-						{t('lyrics.search_reset')}
-					</button>
-				</div>
-			{:else}
-				<button
-					role="radio"
-					aria-checked={!pinned}
-					onclick={() => pinned && choose(null)}
-					class="flex w-full cursor-pointer items-center gap-3 rounded-xl px-2.5 py-2 text-left transition-colors hover:bg-muted/60 {pinned
-						? ''
-						: 'bg-muted/50'}"
-				>
-					<span
-						class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg {pinned
-							? 'bg-muted text-muted-foreground'
-							: 'bg-primary/12 text-primary'}"
-					>
-						<HugeiconsIcon icon={MagicWand01Icon} class="h-4 w-4" />
-					</span>
-					<span class="min-w-0 flex-1">
-						<span class="block text-sm font-medium">{t('lyrics.automatic')}</span>
-						<span class="block truncate text-xs text-muted-foreground">
-							{!pinned && lyrics
-								? t('lyrics.automatic_showing', { source: lyrics.source })
-								: t('lyrics.automatic_hint')}
-						</span>
-					</span>
-					{#if busy === 'auto'}
-						<HugeiconsIcon icon={Loading03Icon} class="h-4 w-4 shrink-0 animate-spin text-muted-foreground" />
-					{:else if !pinned}
-						<HugeiconsIcon icon={Tick02Icon} class="h-4 w-4 shrink-0 text-primary" />
-					{/if}
-				</button>
-				<div class="mx-2.5 my-1.5 h-px bg-border/70"></div>
-			{/if}
-
-			<div>
-				{#each providers as p (p.id)}
-					{@const r = results[p.id] ?? { status: 'idle' }}
-					{@const hit = r.status === 'done' ? r.lyrics : null}
-					{@const showing = lyrics?.provider === p.id}
-					{@const chosen = showing && pinned}
-					{@const dead = r.status === 'done' && !hit}
-					<button
-						role="radio"
-						aria-checked={chosen}
-						aria-disabled={dead || r.status === 'loading'}
-						title={!p.on && r.status === 'idle' ? t('lyrics.off_hint') : undefined}
-						onclick={() => {
-							if (r.status === 'idle' || r.status === 'error') check(p.id);
-							else if (hit && !chosen) choose(p.id);
-						}}
-						class="group flex w-full items-center gap-3 rounded-xl px-2.5 py-2 text-left transition-colors {dead
-							? 'cursor-default'
-							: 'cursor-pointer hover:bg-muted/60'} {chosen ? 'bg-muted/50' : ''}"
-					>
-						<!-- The dot is what's on screen, whether Automatic put it there or you did. -->
-						<span
-							class="flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2 transition-colors {showing
-								? 'border-primary'
-								: dead
-									? 'border-border/60'
-									: 'border-muted-foreground/40 group-hover:border-muted-foreground/70'}"
-						>
-							{#if showing}<span class="h-1.5 w-1.5 rounded-full bg-primary"></span>{/if}
-						</span>
-						<span
-							class="min-w-0 flex-1 truncate text-sm {dead || !p.on
-								? 'text-muted-foreground'
-								: ''} {showing ? 'font-medium' : ''}"
-						>
-							{p.name}
-						</span>
-						{#if busy === p.id}
-							<HugeiconsIcon icon={Loading03Icon} class="h-3.5 w-3.5 shrink-0 animate-spin text-muted-foreground" />
-						{/if}
-						{#if r.status === 'loading'}
-							<span class="flex shrink-0 items-center gap-1.5">
-								<span class="h-4 w-14 animate-pulse rounded-full bg-muted"></span>
-							</span>
-						{:else if r.status === 'idle'}
-							<span class="shrink-0 text-[11px] text-muted-foreground">
-								{t('lyrics.off')} ·
-								<span class="font-medium text-primary group-hover:underline">{t('lyrics.check')}</span>
-							</span>
-						{:else if r.status === 'error'}
-							<span class="shrink-0 text-[11px] text-muted-foreground">
-								{t('lyrics.unreachable')} ·
-								<span class="font-medium text-primary group-hover:underline">{t('lyrics.retry')}</span>
-							</span>
-						{:else if hit}
-							{@const kind = lyricsKind(hit)}
-							{#if hit.lines.some((l) => l.translation)}
-								<span title={t('lyrics.translated')} class="shrink-0 text-muted-foreground">
-									<HugeiconsIcon icon={TranslateIcon} class="h-3.5 w-3.5" />
-								</span>
-							{/if}
-							<span
-								class="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide {KIND_CLASS[
-									kind
-								]}"
-							>
-								{t(KIND_LABEL[kind])}
-							</span>
-						{:else}
-							<span class="shrink-0 text-[11px] text-muted-foreground/70">{t('lyrics.not_found')}</span>
-						{/if}
-					</button>
-				{/each}
-			</div>
+			{@render body()}
 		</div>
+	{/if}
+{:else}
+	<Popover.Root bind:open>
+		<Popover.Trigger
+			class="group -ml-2 flex min-w-0 cursor-pointer items-center gap-1.5 rounded-full py-0.5 pl-2 pr-1.5 transition-colors hover:bg-foreground/10 hover:text-foreground data-[state=open]:bg-foreground/10 data-[state=open]:text-foreground"
+			title={lyrics?.pinned ? t('lyrics.chosen') : undefined}
+		>
+			{@render label()}
+		</Popover.Trigger>
+		<Popover.Content
+			side="top"
+			align="start"
+			sideOffset={8}
+			class="max-h-[min(40rem,var(--bits-popover-content-available-height))] w-[22rem] max-w-[calc(100vw-2rem)] gap-0 overflow-hidden p-0"
+		>
+			{@render body()}
+		</Popover.Content>
+	</Popover.Root>
+{/if}
 
-		{#if lyrics?.synced}
-			<div class="flex items-center gap-3 border-t px-4 py-3">
-				<HugeiconsIcon icon={Timer01Icon} class="h-4 w-4 shrink-0 text-muted-foreground" />
-				<div class="min-w-0 flex-1">
-					<p class="text-sm font-medium">{t('lyrics.timing')}</p>
-					<p class="text-xs leading-snug text-muted-foreground">{t('lyrics.timing_hint')}</p>
-				</div>
-				<div class="flex shrink-0 items-center rounded-full border bg-muted/40">
-					<button
-						class="flex h-7 w-7 cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
-						disabled={busy !== null}
-						aria-label={t('lyrics.timing_earlier')}
-						title={t('lyrics.timing_earlier')}
-						onclick={() => nudge(-STEP_MS)}
-					>
-						<HugeiconsIcon icon={MinusSignIcon} class="h-3.5 w-3.5" />
-					</button>
-					<span
-						class="w-14 text-center text-xs font-medium tabular-nums {offset ? 'text-primary' : ''}"
-						aria-live="polite"
-					>
-						{offsetLabel}
-					</span>
-					<button
-						class="flex h-7 w-7 cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
-						disabled={busy !== null}
-						aria-label={t('lyrics.timing_later')}
-						title={t('lyrics.timing_later')}
-						onclick={() => nudge(STEP_MS)}
-					>
-						<HugeiconsIcon icon={PlusSignIcon} class="h-3.5 w-3.5" />
-					</button>
-				</div>
-				<!-- Held in place when there's nothing to reset, so the stepper doesn't jump. -->
+{#snippet label()}
+	{#if !lyrics}
+		<HugeiconsIcon icon={Search01Icon} class="h-3.5 w-3.5 shrink-0" />
+	{/if}
+	<span class="truncate">{attribution}</span>
+	{#if lyrics?.pinned}
+		<HugeiconsIcon icon={PinIcon} class="h-3 w-3 shrink-0 text-primary" />
+	{/if}
+	{#if offset}
+		<span class="shrink-0 font-medium tabular-nums text-primary">{offsetLabel}</span>
+	{/if}
+	<HugeiconsIcon
+		icon={ArrowUp01Icon}
+		class="h-3 w-3 shrink-0 opacity-60 transition-transform group-data-[state=open]:rotate-180"
+	/>
+{/snippet}
+
+{#snippet body()}
+	<!-- Filled (a phone on its side, ~250px tall), the hints go: the list of sources is the point. -->
+	<div class="flex items-start gap-3 border-b px-4 {fill ? 'pb-1.5 pt-2' : 'pb-3 pt-3.5'}">
+		<div class="min-w-0 flex-1">
+			<p class="font-heading text-sm font-semibold">{t('lyrics.sources_title')}</p>
+			{#if !fill}
+				<p class="mt-0.5 text-xs leading-relaxed text-muted-foreground">{t('lyrics.sources_hint')}</p>
+			{/if}
+		</div>
+		<Button
+			variant="ghost"
+			size="icon-sm"
+			class="-mr-1.5 -mt-1 shrink-0 text-muted-foreground"
+			aria-label={t('lyrics.open_settings')}
+			title={t('lyrics.open_settings')}
+			onclick={openSettings}
+		>
+			<HugeiconsIcon icon={Settings02Icon} class="h-4 w-4" />
+		</Button>
+	</div>
+
+	<div
+		class="min-h-0 flex-1 overflow-y-auto p-1.5"
+		role="radiogroup"
+		aria-label={t('lyrics.sources_title')}
+	>
+		{#if query}
+			<div class="mx-1 mb-1.5 flex items-center gap-2 rounded-lg bg-primary/8 px-2.5 py-1.5 text-xs">
+				<HugeiconsIcon icon={Search01Icon} class="h-3.5 w-3.5 shrink-0 text-primary" />
+				<span class="min-w-0 flex-1 truncate">
+					{t('lyrics.search_results', {
+						query: query.artists ? `${query.title} · ${query.artists}` : query.title
+					})}
+				</span>
 				<button
-					class="flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-foreground {offset
-						? ''
-						: 'invisible'}"
-					aria-label={t('lyrics.timing_reset')}
-					title={t('lyrics.timing_reset')}
-					onclick={() => nudge(0)}
+					class="shrink-0 cursor-pointer font-medium text-primary hover:text-primary/80"
+					onclick={clearSearch}
 				>
-					<HugeiconsIcon icon={ArrowTurnBackwardIcon} class="h-3.5 w-3.5" />
+					{t('lyrics.search_reset')}
 				</button>
 			</div>
-		{/if}
-
-		{#if searchOpen}
-			<form class="space-y-2 border-t px-4 py-3" onsubmit={search}>
-				<Input
-					bind:ref={titleInput}
-					bind:value={draftTitle}
-					placeholder={t('lyrics.search_title')}
-					aria-label={t('lyrics.search_title')}
-					class="h-8"
-				/>
-				<div class="flex gap-2">
-					<Input
-						bind:value={draftArtists}
-						placeholder={t('lyrics.search_artist')}
-						aria-label={t('lyrics.search_artist')}
-						class="h-8 flex-1"
-					/>
-					<Button type="submit" size="sm" disabled={!draftTitle.trim()}>
-						<HugeiconsIcon icon={Search01Icon} class="h-3.5 w-3.5" />
-						{t('lyrics.search_go')}
-					</Button>
-				</div>
-			</form>
 		{:else}
 			<button
-				class="flex w-full cursor-pointer items-center gap-2 border-t px-4 py-2.5 text-xs text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
-				onclick={openSearch}
+				role="radio"
+				aria-checked={!pinned}
+				onclick={() => pinned && choose(null)}
+				class="flex w-full cursor-pointer items-center gap-3 rounded-xl px-2.5 py-2 text-left transition-colors hover:bg-muted/60 {pinned
+					? ''
+					: 'bg-muted/50'}"
 			>
-				<HugeiconsIcon icon={Search01Icon} class="h-3.5 w-3.5" />
-				{t('lyrics.search_open')}
-				<HugeiconsIcon icon={ArrowRight01Icon} class="ml-auto h-3.5 w-3.5" />
+				<span
+					class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg {pinned
+						? 'bg-muted text-muted-foreground'
+						: 'bg-primary/12 text-primary'}"
+				>
+					<HugeiconsIcon icon={MagicWand01Icon} class="h-4 w-4" />
+				</span>
+				<span class="min-w-0 flex-1">
+					<span class="block text-sm font-medium">{t('lyrics.automatic')}</span>
+					<span class="block truncate text-xs text-muted-foreground">
+						{!pinned && lyrics
+							? t('lyrics.automatic_showing', { source: lyrics.source })
+							: t('lyrics.automatic_hint')}
+					</span>
+				</span>
+				{#if busy === 'auto'}
+					<HugeiconsIcon icon={Loading03Icon} class="h-4 w-4 shrink-0 animate-spin text-muted-foreground" />
+				{:else if !pinned}
+					<HugeiconsIcon icon={Tick02Icon} class="h-4 w-4 shrink-0 text-primary" />
+				{/if}
 			</button>
+			<div class="mx-2.5 my-1.5 h-px bg-border/70"></div>
 		{/if}
-	</Popover.Content>
-</Popover.Root>
+
+		<div>
+			{#each providers as p (p.id)}
+				{@const r = results[p.id] ?? { status: 'idle' }}
+				{@const hit = r.status === 'done' ? r.lyrics : null}
+				{@const showing = lyrics?.provider === p.id}
+				{@const chosen = showing && pinned}
+				{@const dead = r.status === 'done' && !hit}
+				<button
+					role="radio"
+					aria-checked={chosen}
+					aria-disabled={dead || r.status === 'loading'}
+					title={!p.on && r.status === 'idle' ? t('lyrics.off_hint') : undefined}
+					onclick={() => {
+						if (r.status === 'idle' || r.status === 'error') check(p.id);
+						else if (hit && !chosen) choose(p.id);
+					}}
+					class="group flex w-full items-center gap-3 rounded-xl px-2.5 py-2 text-left transition-colors {dead
+						? 'cursor-default'
+						: 'cursor-pointer hover:bg-muted/60'} {chosen ? 'bg-muted/50' : ''}"
+				>
+					<!-- The dot is what's on screen, whether Automatic put it there or you did. -->
+					<span
+						class="flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2 transition-colors {showing
+							? 'border-primary'
+							: dead
+								? 'border-border/60'
+								: 'border-muted-foreground/40 group-hover:border-muted-foreground/70'}"
+					>
+						{#if showing}<span class="h-1.5 w-1.5 rounded-full bg-primary"></span>{/if}
+					</span>
+					<span
+						class="min-w-0 flex-1 truncate text-sm {dead || !p.on
+							? 'text-muted-foreground'
+							: ''} {showing ? 'font-medium' : ''}"
+					>
+						{p.name}
+					</span>
+					{#if busy === p.id}
+						<HugeiconsIcon icon={Loading03Icon} class="h-3.5 w-3.5 shrink-0 animate-spin text-muted-foreground" />
+					{/if}
+					{#if r.status === 'loading'}
+						<span class="flex shrink-0 items-center gap-1.5">
+							<span class="h-4 w-14 animate-pulse rounded-full bg-muted"></span>
+						</span>
+					{:else if r.status === 'idle'}
+						<span class="shrink-0 text-[11px] text-muted-foreground">
+							{t('lyrics.off')} ·
+							<span class="font-medium text-primary group-hover:underline">{t('lyrics.check')}</span>
+						</span>
+					{:else if r.status === 'error'}
+						<span class="shrink-0 text-[11px] text-muted-foreground">
+							{t('lyrics.unreachable')} ·
+							<span class="font-medium text-primary group-hover:underline">{t('lyrics.retry')}</span>
+						</span>
+					{:else if hit}
+						{@const kind = lyricsKind(hit)}
+						{#if hit.lines.some((l) => l.translation)}
+							<span title={t('lyrics.translated')} class="shrink-0 text-muted-foreground">
+								<HugeiconsIcon icon={TranslateIcon} class="h-3.5 w-3.5" />
+							</span>
+						{/if}
+						<span
+							class="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide {KIND_CLASS[
+								kind
+							]}"
+						>
+							{t(KIND_LABEL[kind])}
+						</span>
+					{:else}
+						<span class="shrink-0 text-[11px] text-muted-foreground/70">{t('lyrics.not_found')}</span>
+					{/if}
+				</button>
+			{/each}
+		</div>
+	</div>
+
+	{#if lyrics?.synced}
+		<!-- Filled, one slim row like the search one under it: the stepper at the right end, the
+		     reset (when there is one) just before it. -->
+		<div class="flex items-center border-t px-4 {fill ? 'gap-2 py-1' : 'gap-3 py-3'}">
+			<HugeiconsIcon
+				icon={Timer01Icon}
+				class="shrink-0 text-muted-foreground {fill ? 'h-3.5 w-3.5' : 'h-4 w-4'}"
+			/>
+			<div class="min-w-0 flex-1">
+				<p class={fill ? 'text-xs text-muted-foreground' : 'text-sm font-medium'}>
+					{t('lyrics.timing')}
+				</p>
+				{#if !fill}
+					<p class="text-xs leading-snug text-muted-foreground">{t('lyrics.timing_hint')}</p>
+				{/if}
+			</div>
+			<div class="flex shrink-0 items-center rounded-full border bg-muted/40 {fill ? 'order-last' : ''}">
+				<button
+					class="flex {fill ? 'h-6 w-6' : 'h-7 w-7'} cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
+					disabled={busy !== null}
+					aria-label={t('lyrics.timing_earlier')}
+					title={t('lyrics.timing_earlier')}
+					onclick={() => nudge(-STEP_MS)}
+				>
+					<HugeiconsIcon icon={MinusSignIcon} class="h-3.5 w-3.5" />
+				</button>
+				<span
+					class="w-14 text-center text-xs font-medium tabular-nums {offset ? 'text-primary' : ''}"
+					aria-live="polite"
+				>
+					{offsetLabel}
+				</span>
+				<button
+					class="flex {fill
+						? 'h-6 w-6'
+						: 'h-7 w-7'} cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
+					disabled={busy !== null}
+					aria-label={t('lyrics.timing_later')}
+					title={t('lyrics.timing_later')}
+					onclick={() => nudge(STEP_MS)}
+				>
+					<HugeiconsIcon icon={PlusSignIcon} class="h-3.5 w-3.5" />
+				</button>
+			</div>
+			<!-- Held in place when there's nothing to reset, so the stepper doesn't jump. -->
+			<button
+				class="flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-foreground {offset
+					? ''
+					: 'invisible'}"
+				aria-label={t('lyrics.timing_reset')}
+				title={t('lyrics.timing_reset')}
+				onclick={() => nudge(0)}
+			>
+				<HugeiconsIcon icon={ArrowTurnBackwardIcon} class="h-3.5 w-3.5" />
+			</button>
+		</div>
+	{/if}
+
+	{#if searchOpen}
+		<form class="space-y-2 border-t px-4 py-3" onsubmit={search}>
+			<Input
+				bind:ref={titleInput}
+				bind:value={draftTitle}
+				placeholder={t('lyrics.search_title')}
+				aria-label={t('lyrics.search_title')}
+				class="h-8"
+			/>
+			<div class="flex gap-2">
+				<Input
+					bind:value={draftArtists}
+					placeholder={t('lyrics.search_artist')}
+					aria-label={t('lyrics.search_artist')}
+					class="h-8 flex-1"
+				/>
+				<Button type="submit" size="sm" disabled={!draftTitle.trim()}>
+					<HugeiconsIcon icon={Search01Icon} class="h-3.5 w-3.5" />
+					{t('lyrics.search_go')}
+				</Button>
+			</div>
+		</form>
+	{:else}
+		<button
+			class="flex w-full shrink-0 cursor-pointer items-center gap-2 border-t px-4 text-xs text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground {fill
+				? 'py-1.5'
+				: 'py-2.5'}"
+			onclick={openSearch}
+		>
+			<HugeiconsIcon icon={Search01Icon} class="h-3.5 w-3.5" />
+			{t('lyrics.search_open')}
+			<HugeiconsIcon icon={ArrowRight01Icon} class="ml-auto h-3.5 w-3.5" />
+		</button>
+	{/if}
+{/snippet}

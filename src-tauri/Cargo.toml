@@ -23,17 +23,8 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 anyhow = { workspace = true }
 thiserror = { workspace = true }
 tauri = { version = "2", features = ["tray-icon", "protocol-asset", "macos-private-api", "image-png"] }
-tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
-tauri-plugin-single-instance = "2"
-tauri-plugin-autostart = "2"
-tauri-plugin-global-shortcut = "2"
 rusqlite = { version = "0.32", features = ["bundled"] }
-# Phase 2 extraction stack (cipher + PoToken). context/04, 05, 13.
-# BotGuard runs under deno_core + JSDOM, NOT in a hidden webview. Every token a real browser engine
-# mints is rejected by googlevideo; a minimal-DOM runtime is the only one that produces an accepted
-# one. Measured in `progress/active/webremix-stream-403.md`. This pulls in V8.
-rustypipe-botguard = "0.1.2"
 base64 = "0.22"
 regex = "1"
 urlencoding = "2"
@@ -59,7 +50,6 @@ discord-rich-presence = "1.1.0"
 md-5 = "0.10"
 lofty = "0.22.2"
 tauri-plugin-dialog = "2.7.2"
-tauri-plugin-window-state = "2.4.1"
 tauri-plugin-clipboard-manager = "2.3.2"
 # Romanized lyrics (#202, romanize.rs). lindera's build script downloads IPADIC (~12 MB, from
 # GitHub) once and embeds it uncompressed (~45 MB in the binary, borrowed in place, never copied to
@@ -78,6 +68,32 @@ zip = { version = "4", default-features = false, features = ["deflate-flate2"] }
 csv = "1"
 strsim = "0.11"
 unicode-normalization = "0.1"
+
+# Desktop only. The window/updater/tray plugins have no mobile backend, and BotGuard's V8 has no
+# Android build (rusty_v8 publishes none); on Android the PoToken
+# generator reports its runtime as unavailable and the orchestrator degrades exactly as it does
+# when V8 fails to start on a desktop.
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+tauri-plugin-updater = "2"
+tauri-plugin-single-instance = "2"
+tauri-plugin-autostart = "2"
+tauri-plugin-global-shortcut = "2"
+tauri-plugin-window-state = "2.4.1"
+# Phase 2 extraction stack (cipher + PoToken). context/04, 05, 13.
+# BotGuard runs under deno_core + JSDOM, NOT in a hidden webview. Every token a real browser engine
+# mints is rejected by googlevideo; a minimal-DOM runtime is the only one that produces an accepted
+# one. Measured in `progress/active/webremix-stream-403.md`. This pulls in V8.
+rustypipe-botguard = "0.1.2"
+
+# Android: the Media3 session bridge calls back into Rust over JNI (media_android.rs), and libmpv's
+# AudioTrack output needs the process JavaVM handed to libavcodec. Already in the tree under
+# tao/wry on Android.
+[target.'cfg(target_os = "android")'.dependencies]
+jni = "0.21"
+# rustypipe's QuickJS ships pregenerated bindings for desktop targets only; Android generates its
+# own at build time (needs libclang on the build host). Feature unification turns it on for the
+# copy rustypipe already pulls in, so this adds no second QuickJS.
+rquickjs-sys = { version = "0.9", features = ["bindgen"] }
 
 [dev-dependencies]
 # Mock runtime for the IPC guard test (lib.rs `only_ui`).

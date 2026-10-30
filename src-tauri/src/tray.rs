@@ -45,12 +45,17 @@ pub fn set_available(val: bool) {
 /// they can't drift apart.
 pub fn show_main(app: &AppHandle) {
     crate::mini::close(app);
+    #[cfg(desktop)]
     if let Some(w) = app.get_webview_window("main") {
         let _ = w.show();
         let _ = w.unminimize();
         let _ = w.set_focus();
         set_main_visible(app, true);
     }
+    // Android: the activity is the window, and the system brings it back (launcher, recents, the
+    // media notification's content intent). Nothing in-process can raise it from the background.
+    #[cfg(mobile)]
+    let _ = app;
 }
 
 /// Tell the main window's SPA whether anyone can see it.
@@ -224,7 +229,7 @@ mod imp {
     }
 }
 
-#[cfg(not(target_os = "linux"))]
+#[cfg(all(desktop, not(target_os = "linux")))]
 mod imp {
     use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
     use tauri::tray::{MouseButton, TrayIconBuilder, TrayIconEvent};
@@ -306,6 +311,22 @@ mod imp {
     fn sized(icon: &tauri::image::Image<'_>) -> tauri::image::Image<'static> {
         icon.clone().to_owned()
     }
+}
+
+/// Android has no tray. `init` says so up front, so nothing ever hides the app to one: close and
+/// back go through the activity lifecycle instead, and playback lives in the media session.
+#[cfg(mobile)]
+mod imp {
+    use tauri::AppHandle;
+
+    pub fn init(_app: &AppHandle) -> tauri::Result<()> {
+        super::set_available(false);
+        Ok(())
+    }
+
+    pub fn set_playing(_app: &AppHandle, _playing: bool) {}
+
+    pub fn set_icon(_app: &AppHandle, _icon: &tauri::image::Image<'_>) {}
 }
 
 #[cfg(test)]

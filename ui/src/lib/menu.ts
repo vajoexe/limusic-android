@@ -54,6 +54,11 @@ const EDGE = 8;
 export function place(a: Anchor, w: number, h: number) {
 	const { box, gap, align } = a;
 	const { innerWidth: vw, innerHeight: vh } = window;
+	// Taller than the window (a ten-item track menu on a phone on its side is 380px of a 384px
+	// screen): it keeps to the window and scrolls, rather than running off both edges.
+	const room = vh - 2 * EDGE;
+	const fit = h > room ? `;max-height:${room}px;overflow-y:auto` : '';
+	h = Math.min(h, room);
 	const up = box.bottom + gap + h > vh && box.top - gap - h >= 0;
 	const right = align === 'right' || box.left + w > vw;
 	// Both offsets are distances from an edge, so one clamp does either side.
@@ -64,7 +69,7 @@ export function place(a: Anchor, w: number, h: number) {
 	return (
 		`${NO_TRANSITION};left:${right ? 'auto' : x + 'px'};right:${right ? x + 'px' : 'auto'};` +
 		`top:${up ? 'auto' : y + 'px'};bottom:${up ? y + 'px' : 'auto'};` +
-		`transform-origin:${up ? 'bottom' : 'top'} ${right ? 'right' : 'left'}`
+		`transform-origin:${up ? 'bottom' : 'top'} ${right ? 'right' : 'left'}${fit}`
 	);
 }
 

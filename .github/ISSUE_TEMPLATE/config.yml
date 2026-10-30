@@ -1,5 +1,5 @@
 blank_issues_enabled: true
 contact_links:
-  - name: Question, or not sure it is a bug
-    url: https://github.com/SimoHypers/limusic/discussions
-    about: Ask here, no form to fill in.
+  - name: A bug in the desktop app (Linux, Windows, macOS)
+    url: https://github.com/SimoHypers/limusic/issues
+    about: This repository is the Android port only. The desktop app is reported upstream.

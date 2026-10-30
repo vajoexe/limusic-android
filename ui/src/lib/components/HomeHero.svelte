@@ -5,6 +5,7 @@
 	import SearchSuggest from '$lib/components/SearchSuggest.svelte';
 	import { auth, personal, playback } from '$lib/player.svelte';
 	import { thumb } from '$lib/thumb';
+	import { platform } from '$lib/platform.svelte';
 	import { t, type TranslationKey } from '$lib/i18n.svelte';
 
 	// Fixed at mount — a greeting that flips mid-session is uncanny.
@@ -78,7 +79,13 @@
 		></div>
 	</div>
 
-	<div class="flex items-center justify-between gap-6 px-6 pb-4 pt-10">
+	<!-- On a phone the greeting and the search row don't fit side by side: the row drops below,
+	     full width. -->
+	<div
+		class="flex items-center justify-between {platform.compact
+			? 'flex-wrap gap-x-6 gap-y-4 px-4 pt-6'
+			: 'gap-6 px-6 pt-10'} pb-4"
+	>
 		<div class="flex min-w-0 items-center gap-4">
 			{#if auth.account?.signedIn && auth.account.thumbnail}
 				<!-- max-width:none defeats Tailwind Preflight's `img{max-width:100%}`, which in a tight box
@@ -91,11 +98,11 @@
 					class="shrink-0 rounded-full object-cover shadow-md"
 				/>
 			{/if}
-			<h1 class="truncate font-heading text-4xl font-bold tracking-tight drop-shadow-sm">
+			<h1 class="truncate font-heading {platform.compact ? 'text-3xl' : 'text-4xl'} font-bold tracking-tight drop-shadow-sm">
 				{daypart}{auth.account?.name ? `, ${auth.account.name.split(' ')[0]}` : ''}
 			</h1>
 		</div>
-		<div class="flex shrink-0 items-center gap-2">
+		<div class="flex {platform.compact ? 'w-full' : 'shrink-0'} items-center gap-2">
 			<!-- Listen Together moved out of here and lives on the titlebar alone: history is the thing
 			     you reach for from the home page. -->
 			<button
@@ -106,7 +113,7 @@
 			>
 				<HugeiconsIcon icon={HistoryIcon} class="h-5 w-5" />
 			</button>
-			<form class="relative w-full max-w-xs" onsubmit={(e) => { e.preventDefault(); goSearch(); }}>
+			<form class="relative w-full {platform.compact ? '' : 'max-w-xs'}" onsubmit={(e) => { e.preventDefault(); goSearch(); }}>
 				<HugeiconsIcon
 					icon={Search01Icon}
 					class="pointer-events-none absolute left-3 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-muted-foreground"

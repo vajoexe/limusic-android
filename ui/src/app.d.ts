@@ -5,7 +5,12 @@ declare global {
 		// interface Error {}
 		// interface Locals {}
 		// interface PageData {}
-		// interface PageState {}
+		interface PageState {
+			/** The phone's full-screen player is open on this history entry, so Back closes it. */
+			sheet?: 'player';
+			/** A dialog is open on this history entry (Android), so Back closes it. */
+			dialog?: boolean;
+		}
 		// interface Platform {}
 	}
 }

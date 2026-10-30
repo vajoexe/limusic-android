@@ -11,10 +11,37 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use tauri::webview::cookie::Cookie;
+#[cfg(desktop)]
 use tauri::webview::PageLoadEvent;
-use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri::{AppHandle, Emitter, Manager};
+#[cfg(desktop)]
+use tauri::{WebviewUrl, WebviewWindowBuilder};
 
-use crate::state::{AppState, SignInOutcome};
+use crate::state::AppState;
+#[cfg(desktop)]
+use crate::state::SignInOutcome;
+
+/// Android: `SignInActivity` shows Google's own sign-in page in a WebView of its own, with the
+/// WebView's real user agent (no desktop disguise), and hands the music.youtube.com cookies it ends
+/// with to `AppState::sign_in` (`android::nativeSignInCookie`). Whether Google lets a given account
+/// through there is Google's call; the cookie paste (CookieSignIn.svelte) stays as the fallback.
+#[cfg(target_os = "android")]
+pub fn open_login(app: AppHandle, _state: Arc<AppState>, add_account: bool) {
+    if let Err(e) = crate::android::open_sign_in(add_account) {
+        let _ = app.emit("login-error", format!("Couldn't open the sign-in page: {e}"));
+    }
+}
+
+#[cfg(all(mobile, not(target_os = "android")))]
+pub fn open_login(app: AppHandle, _state: Arc<AppState>, _add_account: bool) {
+    let _ = app.emit("login-error", "Sign-in isn't available on this platform yet.");
+}
+
+/// Android has no hidden webview to rotate the jar in (see [`open_login`]). Rotation that arrives
+/// on ordinary responses is still persisted (`AppState::persist_rotated_cookie`); a session Google
+/// has actually expired needs a fresh paste, which the UI asks for.
+#[cfg(mobile)]
+pub async fn refresh_session(_app: AppHandle, _state: Arc<AppState>) {}
 
 const LOGIN_LABEL: &str = "login";
 /// The hidden twin of [`LOGIN_LABEL`], used by [`refresh_session`]. Its own label so a refresh can
@@ -60,6 +87,7 @@ const ADD_ACCOUNT_URL: &str =
 /// Open the login webview. Returns immediately; sign-in completes asynchronously (the UI learns via
 /// the `auth-changed` event, or `login-error` on failure). `add_account` picks the AddSession
 /// flow so an additional Google account can be added while another is signed in.
+#[cfg(desktop)]
 pub fn open_login(app: AppHandle, state: Arc<AppState>, add_account: bool) {
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<()>();
 
@@ -180,6 +208,7 @@ fn no_webgl(win: &tauri::WebviewWindow) {
 ///
 /// Nothing is emitted on failure: the user is already looking at "sign in again", and a webview
 /// session that has genuinely expired leaves them exactly where they were.
+#[cfg(desktop)]
 pub async fn refresh_session(app: AppHandle, state: Arc<AppState>) {
     if !state.it.is_logged_in() || !claim_refresh() {
         return;

@@ -10,9 +10,10 @@
 		Cancel01Icon
 	} from '@hugeicons/core-free-icons';
 	import { browser } from '$app/environment';
-	import { afterNavigate } from '$app/navigation';
+	import { afterNavigate, pushState } from '$app/navigation';
+	import { page } from '$app/state';
 	import { cancelRestore, restoreTo } from '$lib/scrollrestore';
-	import { onMount } from 'svelte';
+	import { onMount, tick, untrack } from 'svelte';
 	import { getCurrentWindow } from '@tauri-apps/api/window';
 	import { fly } from 'svelte/transition';
 	import { cubicOut } from 'svelte/easing';
@@ -51,6 +52,12 @@
 	import VideoSurface from '$lib/components/VideoSurface.svelte';
 	import CommandPalette from '$lib/components/CommandPalette.svelte';
 	import KeyboardShortcuts from '$lib/components/KeyboardShortcuts.svelte';
+	import CookieSignIn from '$lib/components/CookieSignIn.svelte';
+	import MobileTopBar from '$lib/components/MobileTopBar.svelte';
+	import MobileNav from '$lib/components/MobileNav.svelte';
+	import MobileMiniPlayer from '$lib/components/MobileMiniPlayer.svelte';
+	import MobilePlayer from '$lib/components/MobilePlayer.svelte';
+	import { initPlatform, isAndroid, platform } from '$lib/platform.svelte';
 	import { Button } from '$lib/components/ui/button';
 	import { auth, initApp, np, playback, prefs, ui } from '$lib/player.svelte';
 	import { isLocalId } from '$lib/api';
@@ -75,6 +82,21 @@
 	// covers every route that scrolls `<main>` (`$lib/scrollrestore`); /playlist/[id] scrolls its
 	// own container and exports a snapshot of its own.
 	let scroller = $state<HTMLElement | null>(null);
+	// The phone shell's mini player + navigation height. On <html>, since the selection bar and
+	// other floating pieces are positioned against the viewport, some of them from <body>.
+	let navDock = $state(0);
+	// A text field has focus, so the on-screen keyboard is up: the dock gives the room back, the
+	// way a phone app's bottom bar steps aside for the keyboard.
+	let typing = $state(false);
+	// The floating pill's height plus its gap, while it shows (it sits over the page, outside the
+	// measured row).
+	let pillHeight = $state(0);
+	const dock = $derived(
+		navDock + (platform.short && playback.now && !typing ? pillHeight + 8 : 0)
+	);
+	$effect(() => {
+		document.documentElement.style.setProperty('--dock', `${platform.compact ? dock : 0}px`);
+	});
 	export const snapshot = {
 		capture: () => (scroller ? scroller.scrollTop : null),
 		restore: (y: unknown) => {
@@ -155,6 +177,145 @@
 
 	// Apply the saved accent color before the first paint (ssr=false → nothing renders until now).
 	if (browser) initTheme();
+	// Which shell (phone or desktop) and the system bars' insets, also before the first paint.
+	if (browser) initPlatform();
+
+	// The phone's full-screen player gets a history entry of its own while it is open, so the
+	// system Back (and the back gesture) closes it rather than leaving the page under it. Opening
+	// pushes the entry; Back pops it and that closes the player; closing it any other way (the
+	// chevron, a swipe) goes back over the entry so it can't linger as a dead step. A link followed
+	// from inside the player lands on a new entry without the flag, which closes it as well.
+	let sheetPushed = false;
+	$effect(() => {
+		const open = platform.compact && np.open && !!playback.now;
+		untrack(() => {
+			if (open && !sheetPushed) {
+				sheetPushed = true;
+				pushState('', { sheet: 'player' });
+			} else if (!open && sheetPushed) {
+				sheetPushed = false;
+				if (page.state.sheet === 'player') history.back();
+			}
+		});
+	});
+	$effect(() => {
+		if (page.state.sheet === 'player') return;
+		untrack(() => {
+			if (!sheetPushed) return;
+			sheetPushed = false;
+			np.open = false;
+		});
+	});
+	// Dialogs and menus get the same on Android: Back closes the one on top instead of walking the
+	// page under it. Any open one counts, so this needs no wiring in each of them: a dialog is a
+	// bits-ui one (`role="dialog"` with `data-state="open"`) and Back hands it the Escape that closes
+	// it; a ⋯ menu is the full-window "click outside" button under it, which Back clicks.
+	let dialogPushed = false;
+	// A `history.back()` of ours is on its way: nothing pushes until it lands, or a dialog opened
+	// in between would get its entry popped instead of the old one.
+	let backPending = false;
+	// Back is closing the dialog on top: until it has left the page, a DOM change (synced lyrics
+	// redraw all the time) must not read it as still open and push its entry again. That push has
+	// no user gesture behind it, and the WebView skips such entries on Back (`canGoBack()` false),
+	// which sent the app to the background instead of closing the player under the dialog.
+	let closingTop = false;
+	// The bits-ui dialogs, popovers and menus (a popover carries no role, only its data
+	// attributes, so Back used to skip it and close the player under it), and the three
+	// hand-built modals (ShortcutPicker, ShareDialog, AddToPlaylist: a `fixed inset-0 …
+	// bg-black/50` scrim that closes on Escape).
+	const DIALOG =
+		'[role="dialog"][data-state="open"], [role="alertdialog"][data-state="open"], [data-popover-content][data-state="open"], [role="menu"][data-state="open"], div.fixed.inset-0[class*="bg-black/50"]';
+	const MENU_BACKDROP = 'button.fixed.inset-0.cursor-default';
+	const dialogOpen = () => !!document.querySelector(`${DIALOG}, ${MENU_BACKDROP}`);
+	function closeTop() {
+		const menus = document.querySelectorAll<HTMLElement>(MENU_BACKDROP);
+		if (menus.length) menus[menus.length - 1].click();
+		// Cancelable like a real key press, so the one that takes it can say so (`preventDefault`)
+		// and the view under it (theater mode) leaves it alone.
+		else
+			document.dispatchEvent(
+				new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+			);
+	}
+	function back() {
+		backPending = true;
+		history.back();
+	}
+	function syncDialog() {
+		if (backPending || closingTop) return;
+		const open = dialogOpen();
+		if (open && !dialogPushed) {
+			dialogPushed = true;
+			pushState('', { ...page.state, dialog: true });
+		} else if (!open && dialogPushed) {
+			dialogPushed = false;
+			if (page.state.dialog) back();
+		}
+	}
+	$effect(() => {
+		const onDialogEntry = !!page.state.dialog;
+		untrack(() => {
+			if (backPending) {
+				backPending = false;
+				syncDialog(); // a dialog may have opened while the entry was going
+				return;
+			}
+			if (onDialogEntry) {
+				// Back (or a link's Back) onto an entry whose dialog is gone, e.g. one closed by
+				// following a link inside it: a dead step, so step over it.
+				if (!dialogPushed && !dialogOpen()) back();
+				return;
+			}
+			if (!dialogPushed) return;
+			// Back popped our entry: close what is on top. One still open under it pushes again,
+			// once the closed one is gone.
+			dialogPushed = false;
+			if (dialogOpen()) {
+				closingTop = true;
+				closeTop();
+				tick().then(() => {
+					closingTop = false;
+					syncDialog();
+				});
+			}
+		});
+	});
+	onMount(() => {
+		if (!isAndroid) return;
+		const TEXT = 'input:not([type=checkbox],[type=radio],[type=range],[type=button],[type=submit]), textarea, [contenteditable=""], [contenteditable=true]';
+		// Re-checked on DOM changes as well: a focused field removed with its dialog sends no
+		// focusout, which left the dock hidden after the sign-in dialog closed. Deferred: a dialog
+		// that moves focus while it renders fires focusin in the middle of Svelte's update, and a
+		// state write there throws `state_unsafe_mutation`.
+		const check = () =>
+			(typing = !!(document.activeElement?.isConnected && document.activeElement.matches(TEXT)));
+		const focus = () => queueMicrotask(check);
+		// A search submitted from the phone's keyboard puts the keyboard away so the results show.
+		// After the form's own handler: the listener is on the document.
+		const submitted = (e: SubmitEvent) => {
+			if (platform.compact && (e.target as HTMLElement).contains(document.activeElement))
+				(document.activeElement as HTMLElement).blur();
+		};
+		document.addEventListener('focusin', focus);
+		document.addEventListener('focusout', focus);
+		document.addEventListener('submit', submitted);
+		const watch = new MutationObserver(() => {
+			syncDialog();
+			focus();
+		});
+		watch.observe(document.body, {
+			subtree: true,
+			childList: true,
+			attributes: true,
+			attributeFilter: ['data-state']
+		});
+		return () => {
+			watch.disconnect();
+			document.removeEventListener('focusin', focus);
+			document.removeEventListener('focusout', focus);
+			document.removeEventListener('submit', submitted);
+		};
+	});
 	// The custom app icon (#173) is a file on disk, so the titlebar has to ask Rust for it.
 	if (browser) loadAppIcon();
 
@@ -174,10 +335,11 @@
 		}
 		// First: it reveals the window (see initWin).
 		const teardownWin = initWin();
-		checkForUpdatesQuiet();
+		// Android updates come through whoever installed the APK; the updater plugin is desktop-only.
+		if (!isAndroid) checkForUpdatesQuiet();
 		// Repeat while the app stays open: ✕ hides to tray by default, so this component can stay
 		// mounted for days and a mount-only check would never see a release published in between.
-		const updateTimer = setInterval(checkForUpdatesQuiet, QUIET_INTERVAL_MS);
+		const updateTimer = isAndroid ? undefined : setInterval(checkForUpdatesQuiet, QUIET_INTERVAL_MS);
 		const teardownApp = initApp();
 		const teardownZoom = initZoom();
 		const teardownShortcuts = initShortcuts();
@@ -210,7 +372,62 @@
      and no toasts (a banner would cover most of a 560x180 widget). -->
 {#if isMini}
 	<MiniPlayer />
-{:else}
+{:else if platform.compact}
+	<!-- The phone shell (Android below 840px wide: a phone, or a narrow split-screen or DeX
+	     window): top bar, the page, the mini player and the bottom navigation, edge to edge with
+	     the system bars kept clear by the insets. The routes are the same ones; only the frame
+	     around them changes. A wider window gets the desktop shell below. -->
+	<!-- On its side (`platform.short`) the navigation is a rail down the left and the column
+	     beside it has the full height: top bar and page, the mini player floating over the page. -->
+	<div
+		class="relative flex h-dvh overflow-hidden bg-background text-foreground {platform.short
+			? 'flex-row'
+			: 'flex-col'}"
+		style="padding-left:var(--inset-left);padding-right:var(--inset-right)"
+	>
+		{#if platform.short}<MobileNav rail />{/if}
+		<div class="relative flex min-h-0 min-w-0 flex-1 flex-col">
+			<MobileTopBar />
+			<main
+				class="min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain"
+				bind:this={scroller}
+			>
+				{#key `${auth.epoch}:${ui.epoch}`}
+					{@render children()}
+				{/key}
+			</main>
+			{#if !prefs.nativeVideo}<VideoSurface />{/if}
+			<!-- Measured, as `--dock`, so the floating buttons (back to top, selection bar…) sit above
+			     the mini player and the navigation instead of on them (layout.css). -->
+			<!-- On its side (`platform.short`) the mini player floats as a pill at the bottom right,
+			     over the page, so the page keeps the height a full-width row would take. `--dock`
+			     still counts it, so the floating buttons stay above it. -->
+			<div
+				class="relative shrink-0"
+				class:hidden={typing}
+				style:padding-bottom={platform.short ? 'var(--inset-bottom)' : undefined}
+				bind:clientHeight={navDock}
+			>
+				{#if playback.now}
+					{#if platform.short}
+						<div
+							class="absolute right-3 bottom-full mb-2 w-[min(20rem,45vw)]"
+							bind:clientHeight={pillHeight}
+							in:fly={{ y: 32, duration: 250, easing: cubicOut }}
+						>
+							<MobileMiniPlayer pill />
+						</div>
+					{:else}
+						<div in:fly={{ y: 64, duration: 250, easing: cubicOut }}><MobileMiniPlayer /></div>
+					{/if}
+				{/if}
+				{#if !platform.short}<MobileNav />{/if}
+			</div>
+		</div>
+	</div>
+	{#if np.open && playback.now}<MobilePlayer onClose={() => (np.open = false)} />{/if}
+{/if}
+{#if !isMini && !platform.compact}
 	<!-- The window itself is transparent; this root paints the background and, when not maximized,
 	     rounds the corners (the compositor can't round an undecorated window for us on Linux).
 	     Theater mode counts as maximized here: it is fullscreen, and rounding it clips the corners
@@ -222,6 +439,9 @@
 		class="relative flex h-screen flex-col overflow-hidden text-foreground {video.hole
 			? ''
 			: 'bg-background'} {windowCorners()} {ui.theaterOpen && video.hole ? 'invisible' : ''}"
+		style={isAndroid
+			? 'padding:var(--inset-top) var(--inset-right) var(--inset-bottom) var(--inset-left)'
+			: undefined}
 	>
 		{#if video.hole}
 			<!-- Linux: mpv draws the music video underneath the page (nativevideo.rs), so the page
@@ -304,7 +524,8 @@
 	     long as it is mounted. Nothing playing means nothing to show, and that guard is also what
 	     closes it (and leaves fullscreen) when the queue runs out. -->
 	{#if ui.theaterOpen && playback.now}<TheaterMode />{/if}
-
+{/if}
+{#if !isMini}
 	<CommandPalette />
 	<KeyboardShortcuts />
 	<AddToPlaylist />
@@ -316,6 +537,7 @@
 	<ListenTogether />
 	<LinkDialog />
 	<ImportDialog />
+	{#if isAndroid}<CookieSignIn />{/if}
 
 	<!-- The two notification banners below run at z-[100]. Dialogs and menus sit at z-50 and portal to
 	     <body>, so a z-50 banner loses the tie on DOM order and hides behind an open modal. The update

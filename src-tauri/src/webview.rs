@@ -29,8 +29,11 @@ use std::sync::Mutex as StdMutex;
 use std::time::{Duration, Instant};
 
 use serde_json::Value;
+#[cfg(desktop)]
 use tauri::webview::PageLoadEvent;
-use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri::{AppHandle, Manager};
+#[cfg(desktop)]
+use tauri::{WebviewUrl, WebviewWindowBuilder};
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -75,10 +78,19 @@ window.__harness=1;\
 </script></body></html>";
 
 impl Bridge {
+    #[cfg(mobile)]
+    pub async fn create(app: &AppHandle, label: &str) -> Result<Bridge, Error> {
+        // One activity window on Android: a second, hidden webview window cannot be built, so the
+        // cipher degrades to the non-cipher clients exactly as it does when a desktop webview fails.
+        let _ = (app, label);
+        Err(Error::Build("no hidden webviews on this platform".into()))
+    }
+
     /// Create a hidden webview over the [`HARNESS_HTML`] document. Resolves once the page has
     /// finished loading (Tauri `on_page_load`) AND a probe confirms JS↔Rust round-trips. On any
     /// failure the just-built window is destroyed so its label can be reused (no orphan
     /// "already exists").
+    #[cfg(desktop)]
     pub async fn create(app: &AppHandle, label: &str) -> Result<Bridge, Error> {
         // Reclaim the label if a prior attempt left an orphan (or a concurrent build raced us).
         destroy_and_wait(app, label).await;

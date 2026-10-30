@@ -935,6 +935,9 @@ pub(crate) fn open_browser(url: &str) -> Result<(), String> {
             Err(std::io::Error::last_os_error())
         }
     };
+    // An ACTION_VIEW intent: the user's default browser, or the app that owns the link.
+    #[cfg(target_os = "android")]
+    let cmd = crate::android::open_url(url);
     cmd.map_err(|e| format!("Couldn't open the browser: {e}"))
 }
 

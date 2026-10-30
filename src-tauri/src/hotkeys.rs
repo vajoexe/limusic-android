@@ -10,6 +10,7 @@ use std::sync::{Arc, Mutex};
 
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager};
+#[cfg(desktop)]
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
 use crate::db::Db;
@@ -73,6 +74,7 @@ pub struct HotkeyRegisterResult {
 /// Parse a stored binding ("Ctrl+Alt+Space") with the plugin's own parser. A bare key is refused:
 /// a global grab on Space or a letter would take that key from every app on the desktop. F-keys
 /// are the exception, nothing types with them.
+#[cfg(desktop)]
 pub fn parse_shortcut(input: &str) -> Result<Shortcut, String> {
     let shortcut: Shortcut = input.trim().parse().map_err(|e| format!("{e}"))?;
     let modified = shortcut.mods.intersects(Modifiers::CONTROL | Modifiers::ALT | Modifiers::SUPER);
@@ -89,15 +91,47 @@ pub fn parse_shortcut(input: &str) -> Result<Shortcut, String> {
 /// Manages hotkey registration state and event dispatching.
 pub struct HotkeysManager {
     pub config: Mutex<HotkeysConfig>,
+    #[cfg(desktop)]
     pub registered: Mutex<HashMap<Shortcut, HotkeyAction>>,
 }
 
 impl HotkeysManager {
+    #[cfg(desktop)]
     pub fn new(config: HotkeysConfig) -> Self {
         Self { config: Mutex::new(config), registered: Mutex::new(HashMap::new()) }
     }
 
+    #[cfg(mobile)]
+    pub fn new(config: HotkeysConfig) -> Self {
+        Self { config: Mutex::new(config) }
+    }
+
+    /// Android has no system-wide key grab, so nothing is registered: the config is kept (it is the
+    /// user's, and syncs back if they ever use it on a desktop), and every enabled binding reports
+    /// why it is not live rather than appearing to work. Keyboard control on a tablet or DeX goes
+    /// through the in-app shortcuts instead (ui/src/lib/shortcuts.ts).
+    #[cfg(mobile)]
+    pub fn apply_config(
+        &self,
+        _app: &AppHandle,
+        new_config: HotkeysConfig,
+    ) -> HotkeyRegisterResult {
+        let errors: HashMap<HotkeyAction, String> = if new_config.enabled {
+            new_config
+                .bindings
+                .iter()
+                .filter(|(_, s)| !s.trim().is_empty())
+                .map(|(&a, _)| (a, "System-wide hotkeys aren't available on Android".to_owned()))
+                .collect()
+        } else {
+            HashMap::new()
+        };
+        *self.config.lock().unwrap() = new_config.clone();
+        HotkeyRegisterResult { success: errors.is_empty(), config: new_config, errors }
+    }
+
     /// Register all shortcuts from `new_config`, unregistering previous ones.
+    #[cfg(desktop)]
     pub fn apply_config(&self, app: &AppHandle, new_config: HotkeysConfig) -> HotkeyRegisterResult {
         let mut errors = HashMap::new();
         let mut new_registered = HashMap::new();
@@ -157,6 +191,7 @@ impl HotkeysManager {
     }
 
     /// Dispatch triggered shortcut to its bound action.
+    #[cfg(desktop)]
     pub fn handle_event(&self, app: &AppHandle, shortcut: &Shortcut, state: ShortcutState) {
         if state != ShortcutState::Pressed {
             return;

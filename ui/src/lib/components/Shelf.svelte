@@ -32,6 +32,7 @@
 	import SectionHeading from './SectionHeading.svelte';
 	import TrackRow from './TrackRow.svelte';
 	import * as api from '$lib/api';
+	import { platform } from '$lib/platform.svelte';
 	import type { BrowseItem } from '$lib/api';
 	import type { CardSize } from '$lib/personal';
 	import { asSong } from '$lib/browse';
@@ -174,16 +175,22 @@
 <section
 	class="[content-visibility:auto]"
 	style="contain-intrinsic-size: auto {height};"
+	data-shelf
 >
 	{#if title || onMore}
 		<SectionHeading title={title ?? ''} icon={ICONS[mode]} {onMore}>
 			{#if songs.length}
+				<!-- Just the icon on a phone: with the label, a longer title ("From your library") was
+				     cut down to make room for it and See all. -->
 				<button
 					onclick={playAll}
-					class="flex shrink-0 cursor-pointer items-center gap-1 rounded-full bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary transition-colors hover:bg-primary/20"
+					aria-label={t('common.play_all')}
+					class="flex shrink-0 cursor-pointer items-center gap-1 rounded-full bg-primary/10 {platform.compact
+						? 'p-1.5'
+						: 'px-2.5 py-1'} text-xs font-medium text-primary transition-colors hover:bg-primary/20"
 				>
 					<HugeiconsIcon icon={PlayIcon} class="h-3.5 w-3.5" />
-					{t('common.play_all')}
+					{#if !platform.compact}{t('common.play_all')}{/if}
 				</button>
 			{/if}
 		</SectionHeading>
@@ -266,8 +273,10 @@
 			</button>
 		{/if}
 		{#if canRight}
+			<!-- Not on a phone: there the row runs on to the screen edge (layout.css, `.rail`), which
+			     says the same, and this fade would sit across a card a gutter short of it. -->
 			<div
-				class="pointer-events-none absolute inset-y-0 right-0 w-16 bg-gradient-to-l from-background to-transparent"
+				class="pointer-events-none absolute inset-y-0 right-0 w-16 bg-gradient-to-l from-background to-transparent [html.compact_&]:hidden"
 			></div>
 			<button
 				aria-label={t('a11y.scroll_right')}

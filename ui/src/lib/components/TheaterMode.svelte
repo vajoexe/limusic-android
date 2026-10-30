@@ -26,7 +26,9 @@
 	import { cubicOut } from 'svelte/easing';
 	import { HugeiconsIcon } from '@hugeicons/svelte';
 	import {
+		ArrowDown01Icon,
 		Cancel01Icon,
+		Comment01Icon,
 		FavouriteIcon,
 		FullScreenIcon,
 		GoBackward15SecIcon,
@@ -40,11 +42,11 @@
 		PreviousIcon,
 		Queue01Icon,
 		RepeatIcon,
-		RepeatOne01Icon,
 		ShuffleIcon,
 		VolumeHighIcon,
 		VolumeMute02Icon
 	} from '@hugeicons/core-free-icons';
+	import { RepeatForeverIcon } from '$lib/icons';
 	import * as api from '$lib/api';
 	import {
 		commitVolume,
@@ -77,13 +79,31 @@
 	import { t } from '$lib/i18n.svelte';
 	import { keyOf, typing } from '$lib/shortcuts';
 	import ArtistLine from './ArtistLine.svelte';
+	import CommentsView from './CommentsView.svelte';
 	import LyricsView from './LyricsView.svelte';
 	import QueueList from './QueueList.svelte';
 	import SpeedPicker from './SpeedPicker.svelte';
 	import TrackMenu from './TrackMenu.svelte';
 	import Ambient from './Ambient.svelte';
 
-	const close = () => (ui.theaterOpen = false);
+	/** `phone`: Android's player on a phone on its side (MobilePlayer mounts this in place of its
+	 *  own layout). The same stage and dock, sized for a 384px-tall screen: no window to make
+	 *  fullscreen, no volume (the phone's keys are), and the column beside the picture is the
+	 *  player's own tab (`tab`), comments included, one at a time. `composing`: a comment is being
+	 *  typed, so the keyboard has the bottom half and the dock and the picture step aside. */
+	let {
+		phone = false,
+		onClose,
+		tab = $bindable('art'),
+		composing = false
+	}: {
+		phone?: boolean;
+		onClose?: () => void;
+		tab?: 'art' | 'lyrics' | 'queue' | 'comments';
+		composing?: boolean;
+	} = $props();
+
+	const close = () => (phone ? onClose?.() : (ui.theaterOpen = false));
 
 	// Clicking an artist goes to their page, and a fullscreen view over it would just hide it. Same
 	// rule the now-playing view and the expanded lyrics panel use: navigating anywhere closes this.
@@ -94,6 +114,7 @@
 	// thread, or it lands under the taskbar with a border around it (#139). Rust also puts the
 	// maximized state back when theater closes.
 	onMount(() => {
+		if (phone) return () => (video.cinema = false);
 		api.theaterFullscreen(true).catch((e) => console.error('theater fullscreen failed', e));
 		return () => {
 			api.theaterFullscreen(false).catch(() => {});
@@ -118,7 +139,35 @@
 		wake();
 		return () => clearTimeout(idleTimer);
 	});
+	// Resting on the dock is a pointer that hovers (`overDock`): a finger that taps it is gone again,
+	// and its leave doesn't always follow, which held calm off until the next mouse move. Not on the
+	// phone shell at all: a mouse there is a mirror like scrcpy, which never says the pointer left
+	// when it leaves the mirror's window.
+	// A move only counts once the pointer has really gone somewhere. A resting mouse jitters a pixel
+	// at a time (scrcpy forwards every one to a phone), and the browser sends a move of its own
+	// whenever the lyrics or the queue scroll under a still pointer: either kept calm from coming.
+	let lastX = -1;
+	let lastY = -1;
+	function onMove(e: PointerEvent) {
+		if (Math.abs(e.clientX - lastX) < 6 && Math.abs(e.clientY - lastY) < 6) return;
+		lastX = e.clientX;
+		lastY = e.clientY;
+		wake();
+	}
 	const calm = $derived(idle && !playback.paused && !overDock);
+	// A touch has no pointer that hovers, so on a phone the first tap on a calm screen only brings
+	// the chrome back instead of also pressing whatever was under it.
+	let wakeTap = false;
+	function onTouchDown() {
+		wakeTap = calm;
+		wake();
+	}
+	function swallowWakeTap(e: MouseEvent) {
+		if (!wakeTap) return;
+		wakeTap = false;
+		e.stopPropagation();
+		e.preventDefault();
+	}
 	// Cinema: the picture fills the screen, the title, lyrics and queue step aside and the header
 	// and dock float over it.
 	const cinema = $derived(cinemaOn());
@@ -215,6 +264,10 @@
 	// Same podcast transport as the player bar (#500): speed for shuffle, 15-second skips round play.
 	const episode = $derived(!!playback.now?.isEpisode);
 	const local = $derived(!!playback.now && api.isLocalId(playback.now.videoId));
+	/** Phone: the column always shows, so the cover tab ("art") opens on the queue. A local file
+	 *  has no comments. */
+	const phoneTab = $derived(tab === 'art' || (tab === 'comments' && local) ? 'queue' : tab);
+	const commentsShown = $derived(phone && phoneTab === 'comments');
 	// The queue row for what's playing: it carries the album link and what the ⋮ menu needs, which
 	// the now-playing event does not. Matched on videoId so a mid-advance mismatch can't point
 	// either at the previous song.
@@ -235,10 +288,12 @@
 	// A short screen (768 and 800px laptops) gets a slimmer dock and top strip: at full size the
 	// two took a third of the height away from the picture and the lyrics (#469).
 	const short = new MediaQuery('(max-height: 50rem)');
-	const headerH = $derived(short.current ? '4rem' : '5rem');
-	const queueShown = $derived(wide.current && appearance.theaterQueue);
+	const headerH = $derived(phone ? '2.75rem' : short.current ? '4rem' : '5rem');
+	const queueShown = $derived(phone ? phoneTab === 'queue' : wide.current && appearance.theaterQueue);
 	const lyricsShown = $derived(
-		wide.current && appearance.theaterLyrics && (!queueShown || roomy.current)
+		phone
+			? phoneTab === 'lyrics'
+			: wide.current && appearance.theaterLyrics && (!queueShown || roomy.current)
 	);
 	// A song with nothing to read (no lyrics found, or instrumental) gets the spotlight instead of a
 	// half-screen column with one line at its top. The lyrics stay mounted, hidden, to fetch the next
@@ -248,7 +303,8 @@
 	$effect(() => {
 		if (!lyricsShown) noLyrics = false;
 	});
-	const lyricsColumn = $derived(lyricsShown && !noLyrics);
+	// On a phone the lyrics are a tab the user picked, so they say "no lyrics" themselves instead.
+	const lyricsColumn = $derived(lyricsShown && (phone || !noLyrics));
 	// The column rises in when it appears, as the queue does with `in:fly`, and again each time a
 	// song with lyrics follows one without, which `in:` can't do for a column that was only hidden.
 	// Transform and opacity only (tw-animate's `animate-in` also animates `filter`).
@@ -261,8 +317,21 @@
 			});
 	});
 	const both = $derived(lyricsColumn && queueShown);
+	/** Under a column: the dock's room, or once it has faded the header's. On a phone the dock
+	 *  sits above the gesture bar, and a faded one leaves the column a strip clear of the progress
+	 *  line; the column eases into the room and back out of it (`transition-[padding]`). */
+	const colPad = $derived(
+		phone
+			? roomFree
+				? 'calc(0.75rem + var(--inset-bottom))'
+				: `calc(${dockH}px + var(--inset-bottom))`
+			: roomFree
+				? headerH
+				: `${dockH}px`
+	);
 	/** A column beside the picture: it moves over to the left and its title gets smaller. */
-	const columns = $derived(lyricsColumn || queueShown);
+	const columns = $derived(lyricsColumn || queueShown || commentsShown);
+	const pick = (v: 'lyrics' | 'queue' | 'comments') => (tab = v);
 	function toggleLyrics() {
 		const on = !lyricsShown;
 		setAppearance({ theaterLyrics: on, ...(on && !roomy.current && { theaterQueue: false }) });
@@ -294,8 +363,15 @@
 		ro.observe(el);
 		return () => ro.disconnect();
 	});
+	// Phone: once the screen is calm a music video takes the room the dock leaves behind (both
+	// over half a second), the title staying under it, centred, and gives it back on the next touch.
+	// Artwork keeps its size and only moves down to the middle of the screen (half the dock's room
+	// above it, half below), so the space below doesn't sit empty either.
+	const enlarge = $derived(phone && calm && showVideo());
 	const titleRoom = $derived(
-		`${columns ? 6.5 : 8}rem - ${twoLines ? (columns ? 2.6 : 3.5) : 0}rem`
+		phone
+			? `3.75rem - ${twoLines ? 1.5 : 0}rem`
+			: `${columns ? 6.5 : 8}rem - ${twoLines ? (columns ? 2.6 : 3.5) : 0}rem`
 	);
 	const side = $derived(
 		columns
@@ -398,7 +474,7 @@
 	}
 </script>
 
-<svelte:window onkeydown={onKey} onpointermove={wake} />
+<svelte:window onkeydown={onKey} onpointermove={onMove} />
 
 <!-- Above the whole app including the titlebar (the chrome tops out at z-20): fullscreen means
      fullscreen. Below the dialogs and menus (z-50 and up) and the toast/update banners (z-100),
@@ -410,6 +486,9 @@
 	transition:fade={{ duration: 220 }}
 	onintroend={() => (settled = true)}
 	onoutrostart={leave}
+	onpointerdowncapture={phone ? onTouchDown : undefined}
+	onclickcapture={phone ? swallowWakeTap : undefined}
+	style={phone ? 'padding:var(--inset-top) var(--inset-right) 0 var(--inset-left)' : undefined}
 	class="fixed inset-0 z-40 flex flex-col overflow-hidden text-foreground inert:bg-background {video.hole
 		? ''
 		: cinema
@@ -454,18 +533,25 @@
 		></div>
 	{/if}
 
-	<!-- === Top strip: where the queue came from, and the way out. === -->
+	<!-- === Top strip: where the queue came from, and the way out. === On a phone there's no strip:
+	     the way out floats in the top right corner, over the stage. -->
 	<header
 		class="{cinema
 			? 'absolute inset-x-0 top-0 z-10 bg-gradient-to-b from-black/75 via-black/35 to-transparent'
-			: 'relative z-10'} flex shrink-0 items-center justify-between gap-6 px-8 transition-opacity duration-500 xl:px-14 {calm
+			: phone
+				? 'absolute z-20'
+				: 'relative z-10'} flex shrink-0 items-center justify-between gap-6 transition-opacity duration-500 {phone
+			? 'px-4'
+			: 'px-8 xl:px-14'} {calm
 			? 'opacity-0'
 			: ''}"
-		style="height:{headerH}"
+		style={phone && !cinema
+			? `height:${headerH};top:var(--inset-top);right:var(--inset-right)`
+			: `height:${headerH}`}
 	>
 		<div class="min-w-0">
-			<!-- The queue column says this itself. -->
-			{#if !queueShown}
+			<!-- The queue column says this itself. A phone on its side has no height to spare for it. -->
+			{#if !queueShown && !phone}
 				<p class="text-[10px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
 					{playback.queue.sourceName ? t('player.playing_from') : t('player.now_playing')}
 				</p>
@@ -478,10 +564,14 @@
 			type="button"
 			onclick={close}
 			class="flex size-10 shrink-0 cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-foreground"
-			title="{t('player.exit_theater')} (Esc)"
-			aria-label={t('player.exit_theater')}
+			title={phone ? undefined : `${t('player.exit_theater')} (Esc)`}
+			aria-label={phone ? t('mobile.close_player') : t('player.exit_theater')}
 		>
-			<HugeiconsIcon icon={Cancel01Icon} class="h-5 w-5" />
+			{#if phone}
+				<HugeiconsIcon icon={ArrowDown01Icon} strokeWidth={2.5} class="h-6 w-6" />
+			{:else}
+				<HugeiconsIcon icon={Cancel01Icon} class="h-5 w-5" />
+			{/if}
 		</button>
 	</header>
 
@@ -490,18 +580,29 @@
 	     backdrop instead of sinking under it. -->
 	{#if !cinema}
 		<div
-			class="relative z-10 mx-auto flex min-h-0 w-full max-w-[110rem] flex-1 gap-10 px-8 xl:px-14 {both
-				? 'xl:gap-12'
-				: 'xl:gap-20'}"
+			class="relative z-10 mx-auto flex min-h-0 w-full max-w-[110rem] flex-1 {phone
+				? 'gap-6 px-6 pt-3'
+				: 'gap-10 px-8 xl:px-14'} {both ? 'xl:gap-12' : 'xl:gap-20'}"
 		>
 			<!-- A size container, so the picture is sized against the space actually left for it
 			     (cqw/cqh) instead of guessing at the window. -->
 			<div
-				class="flex min-w-0 flex-1 items-center justify-center [container-type:size]"
-				style="padding-bottom:{dockH}px"
+				class="min-w-0 flex-1 items-center justify-center [container-type:size] {phone && composing
+					? 'hidden'
+					: 'flex'} {phone ? 'transition-[padding] duration-500 ease-out' : ''}"
+				style={phone
+					? enlarge
+						? 'padding-bottom:var(--inset-bottom)'
+						: calm
+							? `padding-top:${dockH / 2}px;padding-bottom:calc(${dockH / 2}px + var(--inset-bottom))`
+							: `padding-bottom:calc(${dockH}px + var(--inset-bottom))`
+					: `padding-bottom:${dockH}px`}
 				data-theater-pic
 			>
-				<div style="--side:{side};width:var(--side)">
+				<div
+					style="--side:{side};width:var(--side)"
+					class={phone ? 'transition-[width] duration-500 ease-out' : undefined}
+				>
 					<!-- svelte-ignore a11y_no_static_element_interactions -- wheel is the volume gesture -->
 					<div bind:this={picBox} class="relative" onwheel={onArtWheel}>
 						{#if !showVideo()}
@@ -594,31 +695,40 @@
 					{#key playback.now?.videoId}
 						<div
 							in:fly={{ y: 10, duration: 420, easing: cubicOut }}
-							class={columns ? 'mt-6' : 'mt-8 text-center'}
+							class={phone
+								? `mt-3 ${columns && !enlarge ? '' : 'text-center'}`
+								: columns
+									? 'mt-6'
+									: 'mt-8 text-center'}
 						>
 							<h1
 								bind:this={titleEl}
 								class="font-heading leading-[1.15] font-bold tracking-tight {twoLines
 									? 'line-clamp-2 [overflow-wrap:anywhere]'
 									: 'truncate'}"
-								style="font-size:clamp(1.5rem, var(--side) * {columns ? 0.065 : 0.07}, {columns
-									? '2.25rem'
-									: '3rem'})"
+								style={phone
+									? 'font-size:clamp(1.125rem, var(--side) * 0.08, 1.5rem)'
+									: `font-size:clamp(1.5rem, var(--side) * ${columns ? 0.065 : 0.07}, ${columns ? '2.25rem' : '3rem'})`}
 								title={playback.now?.title}
 							>
 								{playback.now?.title ?? t('player.not_playing')}
 							</h1>
 							<p
-								class="mt-2 flex min-w-0 items-baseline gap-2 {columns
-									? 'text-base'
-									: 'justify-center text-lg'}"
+								class="flex min-w-0 items-baseline gap-2 {phone
+									? columns && !enlarge
+										? 'mt-0.5 text-sm'
+										: 'mt-0.5 justify-center text-sm'
+									: columns
+										? 'mt-2 text-base'
+										: 'mt-2 justify-center text-lg'}"
 							>
 								<ArtistLine
 									runs={playback.now?.artistRuns}
 									text={playback.now?.artists ?? ''}
-									class="text-foreground/75"
+									class={phone ? 'min-w-0 truncate text-foreground/75' : 'text-foreground/75'}
 								/>
-								{#if album}
+								<!-- On a phone the line is the picture's width, ~150px: the artist gets it. -->
+								{#if album && !phone}
 									<span class="shrink-0 text-muted-foreground/60" aria-hidden="true">·</span>
 									<!-- There is no page per song, so the album is where "more about this" goes. -->
 									{#if albumId}
@@ -649,13 +759,13 @@
 			     An entrance only, never an exit: one keeps this in the DOM after the stage has already
 			     given its room back, and the picture recentres in two visible steps. The entrance is
 			     `lyricsCol.animate` (script), since `noLyrics` hides this rather than unmounting it. === -->
-			{#if lyricsShown}
+			{#if lyricsShown && !phone}
 				<div
 					bind:this={lyricsCol}
 					class="min-h-0 min-w-0 flex-[1.2] flex-col overflow-hidden 2xl:[&_[data-line]]:text-[2.25em] [&_*]:[scrollbar-width:none] [&_*::-webkit-scrollbar]:hidden {noLyrics
 						? 'hidden'
 						: 'flex'}"
-					style="padding-bottom:{roomFree ? headerH : `${dockH}px`}"
+					style="padding-bottom:{colPad}"
 				>
 					<LyricsView expanded bind:missing={noLyrics} />
 				</div>
@@ -667,15 +777,63 @@
 			     `relative z-0` gives it its own stacking context, and that is what keeps the scrollbar on
 			     screen: without it, every transform transition on the stage (the cover settling in, the
 			     flash) blanks the thumb on WebKitGTK for as long as it runs (#343, docs/UI-PERFORMANCE.md). -->
-			{#if queueShown}
+			{#if queueShown && !phone}
 				<div
 					in:fly={{ y: 24, duration: 400, easing: cubicOut }}
 					class="relative z-0 flex min-h-0 shrink-0 flex-col overflow-hidden {both
 						? 'w-[22rem]'
 						: 'w-[28rem] xl:w-[34rem]'}"
-					style="padding-bottom:{roomFree ? headerH : `${dockH}px`}"
+					style="padding-bottom:{colPad}"
 				>
 					<QueueList />
+				</div>
+			{/if}
+			<!-- Phone: the split stays, the picture on the left and the player's tabs on the right,
+			     switched from a small pill over the column (the stacked player's Lyrics / Queue /
+			     Comments row). One grid cell for all three, so a switch crossfades instead of cutting.
+			     Each cell is `relative`: the lyrics' source picker covers its cell. -->
+			{#if phone && columns}
+				<div
+					in:fly={{ y: 24, duration: 400, easing: cubicOut }}
+					class="relative z-0 flex min-h-0 min-w-0 flex-[1.2] flex-col transition-[padding] duration-500 ease-out"
+					style="padding-bottom:{colPad}"
+				>
+					<div
+						class="mb-2 flex w-fit shrink-0 gap-0.5 rounded-full border bg-card/70 p-0.5 shadow-sm"
+						role="group"
+					>
+						{@render phoneTabButton('lyrics', Mic01Icon, t('player.lyrics'))}
+						{@render phoneTabButton('queue', Queue01Icon, t('player.queue'))}
+						{#if !local}
+							{@render phoneTabButton('comments', Comment01Icon, t('player.comments'))}
+						{/if}
+					</div>
+					<div
+						class="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)] grid-rows-[minmax(0,1fr)]"
+					>
+					{#if lyricsShown}
+						<div
+							transition:fade={{ duration: 220 }}
+							class="relative col-start-1 row-start-1 flex min-h-0 flex-col overflow-hidden [&_*]:[scrollbar-width:none] [&_*::-webkit-scrollbar]:hidden"
+						>
+							<LyricsView bind:missing={noLyrics} />
+						</div>
+					{:else if queueShown}
+						<div
+							transition:fade={{ duration: 220 }}
+							class="relative col-start-1 row-start-1 flex min-h-0 flex-col overflow-hidden"
+						>
+							<QueueList />
+						</div>
+					{:else}
+						<div
+							transition:fade={{ duration: 220 }}
+							class="relative col-start-1 row-start-1 flex min-h-0 flex-col overflow-hidden"
+						>
+							<CommentsView />
+						</div>
+					{/if}
+					</div>
 				</div>
 			{/if}
 
@@ -686,23 +844,31 @@
 					type="button"
 					transition:fly={{ x: 24, duration: 350, easing: cubicOut }}
 					onclick={() => api.nextTrack()}
-					style="bottom:{dockH + 16}px"
-					class="absolute right-8 z-20 flex w-80 cursor-pointer items-center gap-3 rounded-2xl border border-foreground/10 bg-background/80 p-2.5 pr-4 text-left transition-colors hover:bg-background xl:right-14"
+					style="bottom:{phone ? `calc(${dockH + 8}px + var(--inset-bottom))` : `${dockH + 16}px`}"
+					class="absolute z-20 flex cursor-pointer items-center rounded-2xl border border-foreground/10 bg-background/80 text-left transition-colors hover:bg-background {phone
+						? 'right-6 w-44 gap-2 rounded-xl p-1.5 pr-2.5'
+						: 'right-8 w-80 gap-3 p-2.5 pr-4 xl:right-14'}"
 					aria-label="{t('player.up_next')}: {upNext.title}"
 				>
 					{#if upNext.thumbnail}
 						<img
 							src={thumb(upNext.thumbnail, 120)}
 							alt=""
-							class="size-12 shrink-0 rounded-lg bg-muted object-cover"
+							class="{phone ? 'size-8 rounded-md' : 'size-12 rounded-lg'} shrink-0 bg-muted object-cover"
 						/>
 					{/if}
 					<div class="min-w-0">
-						<p class="text-[10px] font-semibold uppercase tracking-[0.2em] text-primary">
+						<p
+							class="font-semibold uppercase text-primary {phone
+								? 'text-[8px] tracking-[0.15em]'
+								: 'text-[10px] tracking-[0.2em]'}"
+						>
 							{t('player.up_next')}
 						</p>
-						<p class="truncate text-sm font-semibold">{upNext.title}</p>
-						<p class="truncate text-xs text-muted-foreground">{upNext.artists}</p>
+						<p class="truncate font-semibold {phone ? 'text-xs' : 'text-sm'}">{upNext.title}</p>
+						<p class="truncate text-muted-foreground {phone ? 'text-[10px]' : 'text-xs'}">
+							{upNext.artists}
+						</p>
 					</div>
 				</button>
 			{/if}
@@ -751,11 +917,16 @@
 	<div
 		role="group"
 		bind:clientHeight={dockH}
-		onpointerenter={() => (overDock = true)}
+		onpointerenter={(e) => (overDock = !phone && e.pointerType !== 'touch')}
 		onpointerleave={() => (overDock = false)}
-		class="absolute inset-x-0 bottom-0 z-10 mx-auto w-full max-w-[110rem] px-8 transition-opacity duration-500 xl:px-14 {short.current
-			? 'pt-2 pb-4'
-			: 'pt-3 pb-7'} {calm ? 'opacity-0' : ''}"
+		style={phone
+			? 'bottom:var(--inset-bottom);left:var(--inset-left);right:var(--inset-right);width:auto'
+			: undefined}
+		class="absolute inset-x-0 bottom-0 z-10 mx-auto w-full max-w-[110rem] transition-opacity duration-500 {phone
+			? 'px-6 pt-1 pb-2'
+			: short.current
+				? 'px-8 pt-2 pb-4 xl:px-14'
+				: 'px-8 pt-3 pb-7 xl:px-14'} {calm ? 'opacity-0' : ''} {phone && composing ? 'hidden' : ''}"
 	>
 		<!-- Fixed-width slots for the times: the font may have no tabular figures, and the bar would
 		     shift a few px per tick (#463). -->
@@ -781,7 +952,9 @@
 		</div>
 
 		<div
-			class="grid grid-cols-[1fr_auto_1fr] items-center gap-6 {short.current ? 'mt-1.5' : 'mt-3'}"
+			class="grid grid-cols-[1fr_auto_1fr] items-center {phone ? 'gap-3' : 'gap-6'} {short.current
+				? 'mt-1.5'
+				: 'mt-3'}"
 		>
 			<!-- What's playing: like, the player bar's own ⋮ menu, and Song/Video. -->
 			<div class="flex min-w-0 items-center gap-1">
@@ -921,7 +1094,7 @@
 					<!-- icon swap via altIcon/showAlt: `icon` is frozen at mount -->
 					<HugeiconsIcon
 						icon={RepeatIcon}
-						altIcon={RepeatOne01Icon}
+						altIcon={RepeatForeverIcon}
 						showAlt={repeat === 'one'}
 						class="h-[18px] w-[18px]"
 					/>
@@ -935,13 +1108,15 @@
 				<div
 					class="hidden items-center gap-0.5 rounded-full bg-foreground/[0.06] p-1 {cinema
 						? ''
-						: 'lg:flex'}"
+						: phone
+							? ''
+							: 'lg:flex'}"
 				>
 					{@render sideButton(Mic01Icon, t('player.lyrics'), lyricsShown, toggleLyrics)}
 					{@render sideButton(Queue01Icon, t('player.queue'), queueShown, toggleQueue)}
 				</div>
 				<!-- svelte-ignore a11y_no_static_element_interactions -- wheel is the volume gesture -->
-				<div class="flex items-center gap-1" onwheel={wheelVolume}>
+				<div class="items-center gap-1 {phone ? 'hidden' : 'flex'}" onwheel={wheelVolume}>
 					<button
 						type="button"
 						class="flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-foreground"
@@ -1011,6 +1186,21 @@
 			? 'bg-background text-foreground shadow-sm'
 			: 'text-muted-foreground hover:text-foreground'}"
 	>
+		{label}
+	</button>
+{/snippet}
+
+{#snippet phoneTabButton(v: 'lyrics' | 'queue' | 'comments', icon: typeof Mic01Icon, label: string)}
+	<button
+		type="button"
+		onclick={() => pick(v)}
+		aria-pressed={phoneTab === v}
+		class="flex h-7 items-center gap-1.5 rounded-full px-2.5 text-xs font-medium transition-colors {phoneTab ===
+		v
+			? 'bg-primary text-primary-foreground'
+			: 'text-muted-foreground active:bg-foreground/10'}"
+	>
+		<HugeiconsIcon {icon} class="size-3.5" />
 		{label}
 	</button>
 {/snippet}

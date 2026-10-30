@@ -11,6 +11,7 @@
 	import { onMount, untrack } from 'svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
+	import { platform } from '$lib/platform.svelte';
 	import { HugeiconsIcon } from '@hugeicons/svelte';
 	import {
 		Cancel01Icon,
@@ -399,8 +400,9 @@
 			? 'bg-background'
 			: ''}"
 	>
+		<!-- No cap on a phone: on its side the field stopped short of the page's right edge. -->
 		<form
-			class="relative max-w-2xl"
+			class="relative {platform.compact ? '' : 'max-w-2xl'}"
 			onsubmit={(e) => {
 				e.preventDefault();
 				runSearch();

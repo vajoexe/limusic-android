@@ -1,0 +1,11 @@
+<resources>
+    <string name="app_name">Limusic</string>
+    <string name="main_activity_title">Limusic</string>
+    <!-- SignInActivity: Google's own sign-in page. -->
+    <string name="sign_in_title">Sign in to YouTube Music</string>
+    <string name="sign_in_cancel">Cancel</string>
+    <string name="sign_in_retry">Try again</string>
+    <string name="sign_in_checking">Checking your YouTube Music session…</string>
+    <string name="sign_in_failed">Signing in didn\'t finish.</string>
+    <string name="sign_in_unsupported">This device\'s Android System WebView is too old for the in-app sign-in. Update it from the Play Store, or paste a session cookie instead.</string>
+</resources>

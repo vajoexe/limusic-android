@@ -46,10 +46,19 @@
 	import { t } from '$lib/i18n.svelte';
 	import { openImport } from '$lib/import.svelte';
 	import ExperimentalBadge from '$lib/components/ExperimentalBadge.svelte';
+	import { platform } from '$lib/platform.svelte';
 
 	// `?tab=local` so anything that sends you back here (an album whose files were deleted) lands
 	// on the tab you came from instead of a sign-in prompt.
 	let tab = $state(page.url.searchParams.get('tab') ?? lastTab);
+	// The phone's tab chips (Home's chip style); the desktop keeps the segmented bar.
+	// On its side the row is one small pill (like the floating mini player), segments inside it,
+	// so the page under it keeps its height.
+	const chip = $derived(
+		platform.compact
+			? `h-auto flex-none rounded-full border-0 ${platform.short ? 'h-7 bg-transparent px-2.5 text-xs [&_svg]:size-3.5' : 'bg-foreground/5 px-3.5 py-1.5'} text-foreground/75 data-active:bg-primary data-active:text-primary-foreground dark:text-foreground/75 dark:data-active:border-transparent dark:data-active:bg-primary dark:data-active:text-primary-foreground`
+			: ''
+	);
 	$effect(() => {
 		lastTab = tab;
 	});
@@ -151,8 +160,10 @@
 	{/if}
 {/snippet}
 
-<div class="p-6">
-	<div class="mb-6 flex items-center justify-between">
+<div class={platform.compact ? 'px-6 py-5' : 'p-6'}>
+	<!-- A phone wraps the buttons under the title, and the tab bar scrolls instead of running off
+	     the edge. -->
+	<div class="mb-6 flex items-center justify-between {platform.compact ? 'flex-wrap gap-3' : ''}">
 		<h1 class="font-heading text-2xl font-bold">{t('library.title')}</h1>
 		<div class="flex items-center gap-2">
 			<!-- Only with something to push: saves made before signing in, which live on this
@@ -218,26 +229,34 @@
 
 	<!-- The tabs always render: Local music needs neither an account nor a connection. -->
 	<Tabs.Root bind:value={tab}>
-		<Tabs.List class="mb-4">
-			<Tabs.Trigger value="all">
+		<!-- A phone gets Home's chip row instead of the segmented bar, which ran off the edge with a
+		     scrollbar inside it: separate chips that scroll, the active one filled. -->
+		<Tabs.List
+			class={platform.short
+				? 'mb-2 h-auto w-fit max-w-full justify-start gap-0.5 overflow-x-auto overflow-y-hidden rounded-full border bg-card p-0.5 shadow-sm dark:bg-card'
+				: platform.compact
+					? 'rail mb-4 flex h-auto w-auto justify-start gap-2 overflow-x-auto overflow-y-hidden rounded-none bg-transparent px-0 py-1 dark:bg-transparent'
+					: 'mb-4'}
+		>
+			<Tabs.Trigger value="all" class={chip}>
 				<HugeiconsIcon icon={SquareStackIcon} class="h-4 w-4" /> {t('common.all')}
 			</Tabs.Trigger>
-			<Tabs.Trigger value="playlists">
+			<Tabs.Trigger value="playlists" class={chip}>
 				<HugeiconsIcon icon={Playlist02Icon} class="h-4 w-4" /> {t('library.playlists_tab')}
 			</Tabs.Trigger>
-			<Tabs.Trigger value="albums">
+			<Tabs.Trigger value="albums" class={chip}>
 				<HugeiconsIcon icon={MusicNoteSquare02Icon} class="h-4 w-4" /> {t('library.albums_tab')}
 			</Tabs.Trigger>
-			<Tabs.Trigger value="artists">
+			<Tabs.Trigger value="artists" class={chip}>
 				<HugeiconsIcon icon={UserSharingIcon} class="h-4 w-4" /> {t('library.artists_tab')}
 			</Tabs.Trigger>
-			<Tabs.Trigger value="songs">
+			<Tabs.Trigger value="songs" class={chip}>
 				<HugeiconsIcon icon={MusicNote01Icon} class="h-4 w-4" /> {t('library.songs_tab')}
 			</Tabs.Trigger>
-			<Tabs.Trigger value="uploads">
+			<Tabs.Trigger value="uploads" class={chip}>
 				<HugeiconsIcon icon={CloudUploadIcon} class="h-4 w-4" /> {t('library.uploads_tab')}
 			</Tabs.Trigger>
-			<Tabs.Trigger value="local">
+			<Tabs.Trigger value="local" class={chip}>
 				<HugeiconsIcon icon={DriveIcon} class="h-4 w-4" /> {t('library.local_tab')}
 			</Tabs.Trigger>
 		</Tabs.List>

@@ -34,6 +34,7 @@
 	import * as api from '$lib/api';
 	import { openMiniPlayer, playback, prefs, refreshView, toast, ui } from '$lib/player.svelte';
 	import { win } from '$lib/win.svelte';
+	import { isAndroid } from '$lib/platform.svelte';
 	import { lt } from '$lib/lt.svelte';
 	import { anchorMenu, fitMenu, NO_ANCHOR } from '$lib/menu';
 	import { t } from '$lib/i18n.svelte';
@@ -226,6 +227,8 @@
 			</span>
 		</button>
 
+		<!-- No Discord desktop client to talk to on Android. -->
+		{#if !isAndroid}
 		<button
 			class="flex h-full w-8 items-center justify-center text-muted-foreground transition-colors hover:bg-accent/10 hover:text-foreground {discordOn
 				? 'text-foreground'
@@ -244,6 +247,7 @@
 				></span>
 			</span>
 		</button>
+		{/if}
 
 		<button
 			class="flex h-full w-8 items-center justify-center text-muted-foreground transition-colors hover:bg-accent/10 hover:text-foreground {connected
@@ -288,6 +292,8 @@
 		<!-- Mini player: hides the app to the tray and hands over to the floating widget (mini.rs).
 		     It sits with the integrations rather than the window controls because it swaps what
 		     you're using, not the size of this window. -->
+		<!-- Android has one window; the media notification is its mini player. -->
+		{#if !isAndroid}
 		<button
 			class="flex h-full w-8 items-center justify-center text-muted-foreground transition-colors hover:bg-accent/10 hover:text-foreground"
 			onclick={openMiniPlayer}
@@ -296,6 +302,7 @@
 		>
 			<HugeiconsIcon icon={MinimizeScreenIcon} class="h-4 w-4" />
 		</button>
+		{/if}
 
 		{#if win.chrome === 'off'}
 			<div class="mx-1.5 h-4 w-px bg-border"></div>

@@ -532,6 +532,15 @@ impl AppState {
         }
     }
 
+    /// Drop every remembered video URL, failed or not, so the next resolve asks for a new height
+    /// (Android's video quality setting). Unlike [`forget_video_url`](Self::forget_video_url)'s
+    /// command, nothing is marked failed: the links were fine, just a different size.
+    pub fn forget_video_urls(&self) {
+        if let Ok(mut map) = self.video_urls.lock() {
+            map.clear();
+        }
+    }
+
     /// Give the player `video_id`'s music video for the audio file it was handed as `audio_url`,
     /// when this window draws videos itself (nativevideo.rs) and the user has music videos on.
     /// Detached: the resolve is a `/player` round trip, and the audio never waits on a picture.
@@ -2509,10 +2518,63 @@ impl AppState {
     ///
     /// The same reply carries the track's Song/Video twin on accounts YouTube pairs them for, so
     /// it fills that in too, at no extra request (#520).
+    /// Android: a music video YouTube named no song version for (its `/next` wraps rows for some
+    /// accounts only, #520) looks for one in a songs search, so Song/Video can switch and the
+    /// player can show the album cover. Only a match [`is_song_twin`] accepts is kept; none is
+    /// the ordinary answer for a video with no release, and leaves the video's own art.
+    #[cfg(target_os = "android")]
+    fn spawn_twin_search(self: &std::sync::Arc<Self>, video_id: &str) {
+        let me = self.clone();
+        let video_id = video_id.to_owned();
+        tauri::async_runtime::spawn(async move {
+            let probe = {
+                let q = me.queue.lock().await;
+                q.items.iter().find(|i| i.video_id == video_id).cloned()
+            };
+            let Some(probe) = probe.filter(|i| i.is_video && i.counterpart.is_none()) else {
+                return;
+            };
+            let Some(client) = me.clients.get(innertube::METADATA_CLIENT) else { return };
+            let query = format!("{} {}", twin_title(&probe.title), probe.artists);
+            let found = match me.it.search_songs(client, &query, false).await {
+                Ok(r) => r.items,
+                Err(e) => {
+                    tracing::debug!(error = %e, "song version search failed");
+                    return;
+                }
+            };
+            let Some(song) = found.iter().take(5).find(|s| is_song_twin(&probe, s)) else {
+                tracing::info!(video = %video_id, "no song version matched this music video");
+                return;
+            };
+            let learned = {
+                let mut q = me.queue.lock().await;
+                let q = &mut *q;
+                let mut learned = false;
+                let rows = q.items.iter_mut().chain(q.shuffle_orig.iter_mut().flatten());
+                for item in rows.filter(|i| i.video_id == video_id && i.counterpart.is_none()) {
+                    item.counterpart = Some(song.video_id.clone());
+                    item.counterpart_thumbnail = song.thumbnail.clone();
+                    learned = true;
+                }
+                learned
+            };
+            if learned {
+                tracing::info!(video = %video_id, song = %song.video_id, "found the song version");
+                me.emit_queue().await;
+            }
+        });
+    }
+
     fn refresh_from_next(self: &std::sync::Arc<Self>, video_id: &str, gen: u64) {
         // Signed out there is no rating to be wrong about and no twin to learn (signed-out `/next`
         // never wraps a row), and a local file is not a videoId YouTube has ever heard of.
-        if !self.it.is_logged_in() || crate::local::is_local_song(video_id) {
+        if crate::local::is_local_song(video_id) {
+            return;
+        }
+        if !self.it.is_logged_in() {
+            #[cfg(target_os = "android")]
+            self.spawn_twin_search(video_id);
             return;
         }
         let me = self.clone();
@@ -2547,6 +2609,9 @@ impl AppState {
                     me.emit_queue().await;
                 }
             }
+            // After `/next` had its say, so a pairing YouTube made itself always wins.
+            #[cfg(target_os = "android")]
+            me.spawn_twin_search(&video_id);
             let Some(rating) = next.rating else { return };
             if me.generation.load(Ordering::SeqCst) != gen
                 || me.rate_epoch.load(Ordering::SeqCst) != epoch
@@ -4173,6 +4238,39 @@ impl AppState {
         self.lt_broadcast_queue().await;
     }
 
+    /// The phone's mini player was swiped away: end a session that isn't playing. mpv stops, the
+    /// queue empties (and is saved empty, so a relaunch doesn't bring it back), and the media
+    /// session clears, which takes its notification down. `false`, with nothing touched, while the
+    /// music is playing (the gesture must never stop it) or a Listen Together room is open (the
+    /// room's queue isn't this device's to throw away). The UI clears its own copy on `true`.
+    pub async fn dismiss_session(self: &std::sync::Arc<Self>) -> bool {
+        if self.is_playing.load(Ordering::Relaxed) || self.lt.in_room().await {
+            return false;
+        }
+        // A load still in flight for the old queue must not start playing into the empty one.
+        self.generation.fetch_add(1, Ordering::SeqCst);
+        {
+            let mut q = self.queue.lock().await;
+            q.items.clear();
+            q.current = 0;
+            q.shuffle_orig = None;
+            q.radio_seed = None;
+            q.source_name = None;
+            q.source_id = None;
+            q.radio = false;
+            q.lookahead_loaded = None;
+            q.duration = 0.0;
+        }
+        let _ = self.player.stop();
+        *self.pending_seek.lock().unwrap() = None;
+        self.persist_queue().await;
+        self.emit_queue().await;
+        if let Some(m) = &self.media {
+            m.clear();
+        }
+        true
+    }
+
     /// Remove every upcoming track the user queued by hand, both "Play next" and "Add to queue"
     /// (the panel's Clear queue). Played/playing items and the playlist context stay.
     pub async fn clear_queued(self: &std::sync::Arc<Self>) {
@@ -4715,6 +4813,87 @@ pub(crate) fn swap_version(item: &mut SongItem) -> bool {
     true
 }
 
+/// What is left of a title to compare a music video's with its song's: lowercase, single-spaced,
+/// minus the asides a video's title carries and its song's doesn't ("(Official Video)", "[4K]",
+/// "| Visualizer"). Every other aside stays, "(Extended Mix)" and "(feat. X)" included, so a
+/// remix or a live cut never passes for the song.
+#[cfg_attr(not(target_os = "android"), allow(dead_code))]
+fn twin_title(title: &str) -> String {
+    const NOISE: &[&str] = &[
+        "official",
+        "video",
+        "mv",
+        "m/v",
+        "lyric",
+        "lyrics",
+        "audio",
+        "visualizer",
+        "visualiser",
+        "hd",
+        "hq",
+        "4k",
+        "remastered",
+    ];
+    let title = title.split('|').next().unwrap_or_default().to_lowercase();
+    let (mut out, mut aside, mut depth) = (String::new(), String::new(), 0u32);
+    for c in title.chars() {
+        match c {
+            '(' | '[' | '【' | '（' => {
+                depth += 1;
+                aside.push(c);
+            }
+            ')' | ']' | '】' | '）' if depth > 0 => {
+                depth -= 1;
+                aside.push(c);
+                if depth == 0 {
+                    let words = aside
+                        .split(|c: char| !c.is_alphanumeric() && c != '/')
+                        .filter(|w| !w.is_empty());
+                    if !words.clone().any(|w| NOISE.contains(&w)) {
+                        out.push_str(&aside);
+                    }
+                    aside.clear();
+                }
+            }
+            _ if depth > 0 => aside.push(c),
+            _ => out.push(c),
+        }
+    }
+    out.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// `song` is `video`'s song version: not a video itself, the same title once [`twin_title`] has
+/// had both, the video's first artist among the song's, and, when both state a length, within a
+/// minute and a half of it (a video's intro and outro, not a different cut). Anything short of
+/// all of that is a guess, and a guess would play the wrong recording.
+#[cfg_attr(not(target_os = "android"), allow(dead_code))]
+fn is_song_twin(video: &SongItem, song: &SongItem) -> bool {
+    let first = |a: &str| {
+        a.split([',', '&', '•'])
+            .next()
+            .unwrap_or_default()
+            .split(" feat")
+            .next()
+            .unwrap_or_default()
+            .trim()
+            .to_lowercase()
+    };
+    let artist = video
+        .artist_runs
+        .first()
+        .map(|r| r.text.to_lowercase())
+        .unwrap_or_else(|| first(&video.artists));
+    let theirs = song.artists.to_lowercase();
+    let (a, b) =
+        (parse_duration_ms(video.duration.as_deref()), parse_duration_ms(song.duration.as_deref()));
+    !song.is_video
+        && song.video_id != video.video_id
+        && !artist.is_empty()
+        && theirs.split([',', '&', '•']).any(|s| s.trim() == artist)
+        && twin_title(&video.title) == twin_title(&song.title)
+        && (a == 0 || b == 0 || (a - b).abs() <= 90_000)
+}
+
 /// Take `from`'s twin, with its art and segments, when `into` has none, or fill in what `into`
 /// lacks for the same twin. True when anything changed.
 fn adopt_twin(into: &mut SongItem, from: &SongItem) -> bool {
@@ -4950,11 +5129,11 @@ mod tests {
     use super::{
         adopt_twin, append_page, backfill_metadata, cache_horizon, drop_duplicates, enqueue_at,
         format_duration, freshen, get_url, guest_insert_index, history_threshold, is_mix,
-        loudness_gain, merge_radio, next_index, parse_duration_ms, persist_fingerprint,
-        prefer_version, prev_track_title, put_url, queue_fingerprint, radio_seed_for,
-        retain_upcoming, shuffle_new_queue, shuffle_upcoming, splice_radio_into, swap_version,
-        trim_played, twin_position, unshuffled, upcoming_queued, QueueState, RepeatMode, VideoUrls,
-        KEEP_PLAYED, LOCAL_PLAYLIST_PREFIX, MAX_BOOST_DB,
+        is_song_twin, loudness_gain, merge_radio, next_index, parse_duration_ms,
+        persist_fingerprint, prefer_version, prev_track_title, put_url, queue_fingerprint,
+        radio_seed_for, retain_upcoming, shuffle_new_queue, shuffle_upcoming, splice_radio_into,
+        swap_version, trim_played, twin_position, twin_title, unshuffled, upcoming_queued,
+        QueueState, RepeatMode, VideoUrls, KEEP_PLAYED, LOCAL_PLAYLIST_PREFIX, MAX_BOOST_DB,
     };
 
     /// The whole point of the video-URL map is answering a reopen without a round trip, so a live
@@ -5022,6 +5201,46 @@ mod tests {
         assert_eq!(twin_position(10.0, &video), 0.0); // the intro: the song's start
         assert_eq!(twin_position(115.0, &video), 86.439); // the break: where the song picks up
         assert_eq!(twin_position(265.5, &video), 227.5); // the outro: the song's end
+    }
+
+    #[test]
+    fn a_twin_title_drops_only_video_asides() {
+        assert_eq!(twin_title("Won't Look Back (Official Video)"), "won't look back");
+        assert_eq!(twin_title("Won't Look Back [Official Music Video] | 4K"), "won't look back");
+        assert_eq!(
+            twin_title("Locked Away (Official Video) (feat. Adam Levine)"),
+            "locked away (feat. adam levine)"
+        );
+        assert_eq!(twin_title("Won't Look Back (Extended Mix)"), "won't look back (extended mix)");
+    }
+
+    #[test]
+    fn only_a_close_song_counts_as_a_videos_twin() {
+        let video = innertube::SongItem {
+            video_id: "v".into(),
+            title: "Won't Look Back (Official Video)".into(),
+            artists: "Duke Dumont".into(),
+            duration: Some("3:58".into()),
+            is_video: true,
+            ..Default::default()
+        };
+        let song = innertube::SongItem {
+            video_id: "s".into(),
+            title: "Won't Look Back".into(),
+            artists: "Duke Dumont".into(),
+            duration: Some("4:30".into()),
+            ..Default::default()
+        };
+        assert!(is_song_twin(&video, &song));
+        let remix =
+            innertube::SongItem { title: "Won't Look Back (Extended Mix)".into(), ..song.clone() };
+        assert!(!is_song_twin(&video, &remix));
+        let cover = innertube::SongItem { artists: "Someone Else".into(), ..song.clone() };
+        assert!(!is_song_twin(&video, &cover));
+        let long = innertube::SongItem { duration: Some("7:10".into()), ..song.clone() };
+        assert!(!is_song_twin(&video, &long));
+        let other_video = innertube::SongItem { is_video: true, ..song.clone() };
+        assert!(!is_song_twin(&video, &other_video));
     }
 
     #[test]

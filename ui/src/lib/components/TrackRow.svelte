@@ -17,6 +17,7 @@
 	import { goto } from '$app/navigation';
 	import { anySaved, isLiked, openAddManyToPlaylist, ratingOf, savedPlaylists, toast, toggleRating } from '$lib/player.svelte';
 	import { addedLabel, addedTitle, CELL, END, TITLE, type TrackColumn } from '$lib/trackcolumns';
+	import { platform } from '$lib/platform.svelte';
 	import { tagOf } from '$lib/stats';
 	import { myPlays } from './TrackColumns.svelte';
 	import SavedInPlaylists from './SavedInPlaylists.svelte';
@@ -155,7 +156,12 @@
 	const rated = $derived(ratingOf(song));
 	// A local file has no YouTube identity, so there is nothing to rate (the same guard the ⋯ menu
 	// applies to its like item). The compact variant has no room: it keeps its single heart.
-	const showRating = $derived(!compact && !hideRating && !api.isLocalId(song.video_id));
+	// The phone shell is touch: nothing can hover to reveal the thumbs or the ⋯, and a row a phone
+	// wide has no room for the columns. It takes the grid variant's layout (duration on the artist
+	// line, a heart and an always-on ⋯) and no column header (`TrackColumns` hides there too).
+	const narrow = $derived(compact || platform.compact);
+	const cols = $derived(platform.compact ? undefined : columns);
+	const showRating = $derived(!narrow && !hideRating && !api.isLocalId(song.video_id));
 
 	// Your own playlists holding this song, for the "saved" mark. Gated on `showRating` because it
 	// answers the same three questions: a local file is in no YTM playlist, and the compact and
@@ -277,7 +283,7 @@
 			}}
 		/>
 	{/if}
-	<div class="flex min-w-0 items-center gap-3 {columns ? TITLE : 'flex-1'}">
+	<div class="flex min-w-0 items-center gap-3 {cols ? TITLE : 'flex-1'}">
 		<div class="flex min-w-0 shrink-0 items-center gap-3">
 			{#if index !== undefined}
 				<span
@@ -331,11 +337,13 @@
 				{/if}
 			</div>
 			<div class="flex min-w-0 items-center gap-1 text-xs text-muted-foreground">
-				{#if columns && song.explicit}
+				{#if cols && song.explicit}
 					<ExplicitIcon class="mr-0.5 h-3.5 w-3.5 shrink-0" />
 				{/if}
-				<ArtistLine runs={song.artist_runs} text={song.artists} />
-				{#if compact && duration}
+				<!-- On a phone the byline is plain text: a thumb meant for the row lands on a name as
+				     often as not, and opened the artist instead of playing. ⋯ ▸ Go to artist stays. -->
+				<ArtistLine runs={platform.compact ? undefined : song.artist_runs} text={song.artists} />
+				{#if narrow && duration}
 					<!-- No leading dot with nothing before it: a search row can come back artist-less
 					     (YouTube drops the name when the query is the artist), leaving the length alone
 					     on the line. -->
@@ -348,7 +356,7 @@
 	<!-- Album rows only. Wide rows are mostly empty between the title and the duration, so it takes a
 	     centred column of its own there; narrow ones sit it next to the duration at its natural width
 	     rather than dropping it, since it never needs more than "1,234 plays" worth of room. -->
-	{#if song.play_count && showPlayCount && !compact && !columns}
+	{#if song.play_count && showPlayCount && !narrow && !cols}
 		<div class="flex shrink-0 items-center justify-center text-xs text-muted-foreground lg:flex-1">
 			<span class="truncate">{t('library.play_count', { count: song.play_count })}</span>
 		</div>
@@ -369,10 +377,10 @@
 		</div>
 	{/snippet}
 
-	{#if columns}
+	{#if cols}
 		<!-- One cell per column, drawn on every row whether it has a value or not, so none can pull
 		     its neighbours out from under their labels. Widths and breakpoints: `CELL`. -->
-		{#each columns as c (c)}
+		{#each cols as c (c)}
 			{#if c === 'album'}
 				<span class="truncate text-xs text-muted-foreground {CELL.album}">
 					{#if song.album_id}
@@ -414,12 +422,12 @@
 		{/each}
 	{/if}
 
-	<div class="flex shrink-0 items-center {compact ? 'gap-0.5' : 'gap-2'} {columns ? END : ''}">
+	<div class="flex shrink-0 items-center {narrow ? 'gap-0.5' : 'gap-2'} {cols ? END : ''}">
 		<!-- Collaborative playlists only: who put this track in the list. Every row on such a page
 		     carries one, so it can't leave a hole on its neighbours. A Taste Match row that several
 		     members share overlaps their avatars, growing leftward so the marks stay in column.
 		     Under a column header it is a column of its own (Added by) instead. -->
-		{#if song.added_by_avatars?.length && !compact && !columns}
+		{#if song.added_by_avatars?.length && !narrow && !cols}
 			{@render avatars()}
 		{/if}
 		<!-- Both marks are always on, unlike the thumbs beside them: they are properties of the song,
@@ -437,8 +445,8 @@
 				</span>
 			{/if}
 		{/snippet}
-		{#if !columns}{@render saved()}{/if}
-		{#if !hideRating && !columns}
+		{#if !cols}{@render saved()}{/if}
+		{#if !hideRating && !cols}
 			<span class="flex h-3.5 w-3.5 shrink-0 items-center">
 				{#if song.explicit}
 					<ExplicitIcon class="h-3.5 w-3.5 text-muted-foreground" />
@@ -462,14 +470,14 @@
 		{/if}
 		<!-- Under a column header the checkmark sits by the duration, the thumbs that only show on
 		     hover to its left: at rest the row ends "✓ 3:06" instead of a mark, a gap, then the length. -->
-		{#if columns}{@render saved()}{/if}
-		{#if !compact && (columns ? columns.includes('duration') : duration)}
+		{#if cols}{@render saved()}{/if}
+		{#if !narrow && (cols ? cols.includes('duration') : duration)}
 			<!-- A fixed slot, or every mark to its left moves with the digits (#463). `tabular-nums`
 			     alone isn't enough: DM Sans has no tabular figures, and 10:00 is wider in any font.
 			     5ch holds up to 59:59; an hour-long track still widens its own row. -->
 			<span class="min-w-[5ch] shrink-0 text-right text-xs tabular-nums text-muted-foreground">{duration}</span>
 		{/if}
-		{#if compact}
+		{#if narrow}
 			<!-- Persistent, not hover-only: a filled heart is state the row has to keep showing. -->
 			<button
 				class="cursor-pointer rounded-md p-1.5 text-muted-foreground hover:bg-accent/20 hover:text-foreground"
@@ -494,7 +502,7 @@
 			{playlistId}
 			{queueIndex}
 			{inLibraryList}
-			triggerClass="cursor-pointer rounded-md p-1.5 text-muted-foreground hover:bg-accent/20 hover:text-foreground {compact
+			triggerClass="cursor-pointer rounded-md p-1.5 text-muted-foreground hover:bg-accent/20 hover:text-foreground {narrow
 				? ''
 				: 'invisible group-focus-within:visible group-hover:visible'}"
 		/>

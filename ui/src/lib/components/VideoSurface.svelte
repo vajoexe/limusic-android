@@ -1,6 +1,17 @@
 <script lang="ts">
 	import { forgetVideoUrl, playback, prefs, videoUrlFor } from '$lib/player.svelte';
-	import { canVideo, cinema, hasVideo, registerVideo, showVideo, video } from '$lib/video.svelte';
+	import {
+		canVideo,
+		cinema,
+		counterpart,
+		hasVideo,
+		pickVersion,
+		registerVideo,
+		showVideo,
+		video
+	} from '$lib/video.svelte';
+	import { logUi } from '$lib/errlog';
+	import { lt } from '$lib/lt.svelte';
 
 	// --- Music videos (plan 031) -------------------------------------------------------------
 	// When the track *is* a music video, the player view draws the video instead of the artwork.
@@ -82,6 +93,27 @@
 	let trimSpeed = 1;
 	let outOfBand = 0;
 
+	/** Videos whose picture failed this session. The fallback below runs once per video, so a
+	 *  video that fails again after the user picks it back gets the artwork, never a loop. */
+	const failedVideos = new Set<string>();
+
+	/**
+	 * The picture can't be had for `id`: its stream didn't resolve, or the element couldn't play it.
+	 * The music never depended on it (mpv plays the audio on its own), so this is about what the view
+	 * shows. With YouTube's own audio version of this video to hand (#442: the pairing YouTube
+	 * makes, not a guess from a search), switch to it the way the Song side of Song/Video does:
+	 * `switch_version` lands it on the same moment and the cover fades over to the song's. Without
+	 * one, the video's audio plays on under its thumbnail, which the views crop to the cover's frame.
+	 */
+	function videoFailed(id: string) {
+		if (playback.now?.videoId !== id || !playback.now.isVideo || failedVideos.has(id)) return;
+		failedVideos.add(id);
+		// A guest's playback is the host's; asking to switch would only raise the guest hint.
+		const twin = video.want && counterpart() && lt.role !== 'guest';
+		logUi('warn', `music video ${id} has no picture; ${twin ? 'switching to its song' : 'showing its thumbnail'}`);
+		if (twin) void pickVersion(false);
+	}
+
 	/** Which track the URL below was fetched for. A plain let, so the fetch effect can read it
 	 *  without depending on itself. */
 	let fetchedId: string | null = null;
@@ -124,7 +156,11 @@
 		// free to leave in: the element still prerolls, so a fragment it half-applies is one more
 		// unknown in a phase that has to measure precisely. The converge phase below handles the
 		// opening position instead.
-		videoUrlFor(id).then((u) => !cancelled && (video.url = u));
+		videoUrlFor(id).then((u) => {
+			if (cancelled) return;
+			video.url = u;
+			if (!u) videoFailed(id);
+		});
 		// Cancelled with nothing to show for it (toggled off mid-flight): let it be tried again.
 		return () => {
 			cancelled = true;
@@ -206,6 +242,11 @@
 			el.currentTime = target + (playback.paused || bufferedAt(el, target) ? 0 : SEEK_COST);
 			return;
 		}
+		// Synced, the music going, and yet the element sits paused: a resume went missing on the way
+		// (seen on Android after a failed picture and a switch back). Nothing else would ever start
+		// it again, and the seeks below only drag a still frame along behind the music.
+		// Not once it has ended: play() on an ended element starts it over from the top.
+		if (!playback.paused && !dormant && el.paused && !el.ended) resumeVideo();
 		if (Math.abs(drift) > SEEK_FROM) {
 			const now = performance.now();
 			if (now - lastSeek < SEEK_COOLDOWN) return; // let the last one finish re-buffering
@@ -324,8 +365,13 @@
 		v.addEventListener('canplay', syncVideo);
 		v.addEventListener('seeked', syncVideo);
 		v.addEventListener('error', () => {
-			if (playback.now?.videoId) forgetVideoUrl(playback.now.videoId);
+			const id = playback.now?.videoId;
+			// An error from a src that was already taken away (a track change, going dormant) is
+			// about nothing that is showing.
+			if (!id || !v.getAttribute('src')) return;
+			forgetVideoUrl(id);
 			video.url = null;
+			videoFailed(id);
 		});
 		el = v;
 		registerVideo(v, park);

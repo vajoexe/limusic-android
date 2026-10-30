@@ -278,6 +278,14 @@ impl DiscordHandle {
 /// Spawn the presence owner thread. `enabled` is the persisted `discord_rpc` setting — when off,
 /// the thread parks on the channel and never opens a socket.
 pub fn spawn(enabled: bool, cfg: RpcConfig) -> Option<DiscordHandle> {
+    // Android: the Discord app exposes no IPC socket, and the sandbox would keep another app's
+    // socket out of reach anyway, so there is nothing to connect to. Presence there means signing
+    // in to Discord as the user and speaking its Gateway (Metrolist's route, see the module docs),
+    // which this integration deliberately is not. A setting carried over stays stored, unused.
+    if cfg!(target_os = "android") {
+        tracing::info!("discord rich presence: not available on Android (no Discord IPC)");
+        return None;
+    }
     // Without a real app id there is nothing to connect *as*. Say so once, loudly, rather than
     // leaving a settings toggle that silently does nothing.
     if APP_ID.is_empty() || !APP_ID.bytes().all(|b| b.is_ascii_digit()) {

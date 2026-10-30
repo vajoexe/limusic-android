@@ -1,0 +1,19 @@
+{
+  "$schema": "../gen/schemas/mobile-schema.json",
+  "identifier": "mobile",
+  "description": "Android: the single main webview. No window chrome, updater or global shortcuts (desktop-only plugins). Clipboard reads are for the cookie sign-in's Paste button, on a tap.",
+  "platforms": [
+    "android"
+  ],
+  "windows": [
+    "main"
+  ],
+  "permissions": [
+    "core:default",
+    "process:default",
+    "dialog:allow-open",
+    "dialog:allow-save",
+    "clipboard-manager:allow-write-text",
+    "clipboard-manager:allow-read-text"
+  ]
+}
