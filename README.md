@@ -39,7 +39,7 @@ the upstream repository.
 ## Status
 
 Everything below was tested on a Samsung Galaxy S24 FE running Android 17, and
-on the Android 17 emulator. No other phones have been tested yet.
+on the Android 17 emulator. No other devices have been tested yet.
 
 What works:
 
