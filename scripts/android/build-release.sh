@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Build the signed arm64 release APK.
+# Build the signed universal release APK: arm64-v8a (phones, tablets) and x86_64 (emulators,
+# x86 Chromebooks) in one file.
 #
 # app/build.gradle.kts signs release builds with whatever keystore.properties and the
 # LIMUSIC_ANDROID_* variables name. keystore.properties (from make-release-key.sh) holds the path
@@ -45,7 +46,7 @@ source "$root/scripts/android/env.sh" >/dev/null
 export GRADLE_OPTS="${GRADLE_OPTS:-} -Dorg.gradle.configuration-cache=false"
 
 status=0
-(cd "$root" && cargo tauri android build --target aarch64 --apk) || status=$?
+(cd "$root" && cargo tauri android build --target aarch64 --target x86_64 --apk) || status=$?
 unset LIMUSIC_ANDROID_STORE_PASSWORD LIMUSIC_ANDROID_KEY_PASSWORD
 (cd "$android" && ./gradlew --stop >/dev/null 2>&1) || true
 [ "$status" -eq 0 ] || exit "$status"
@@ -54,5 +55,9 @@ apk="$android/app/build/outputs/apk/universal/release/app-universal-release.apk"
 [ -f "$apk" ] || { echo "Build finished but $apk is missing (was it left unsigned?)" >&2; exit 1; }
 apksigner="$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -n1)apksigner"
 "$apksigner" verify --verbose --print-certs "$apk"
+echo
+# What is actually inside, not what the file name says: one line per ABI with its library count.
+echo "Native libraries:"
+unzip -l "$apk" | awk '$4 ~ /^lib\/[^/]+\/.+\.so$/ { split($4, p, "/"); n[p[2]]++ } END { for (a in n) printf "  %s: %d\n", a, n[a] }'
 echo
 echo "Signed release APK: $apk"

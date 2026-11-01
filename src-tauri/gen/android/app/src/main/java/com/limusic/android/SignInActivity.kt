@@ -68,6 +68,19 @@ class SignInActivity : ComponentActivity() {
       if (ok) a.finish() else a.showError(message)
     }
 
+    /**
+     * An account was removed from Limusic: the Google session this page signed in with goes too.
+     * The profile otherwise keeps it after the app has deleted its own copy (the next sign-in
+     * would walk straight back in), and Android has no hidden refresh window to use it the way the
+     * desktop does. Main thread. A profile that was never made is left alone.
+     */
+    fun forget() {
+      if (!WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE)) return
+      val profile = ProfileStore.getInstance().getProfile(PROFILE) ?: return
+      profile.cookieManager.removeAllCookies { profile.cookieManager.flush() }
+      profile.webStorage.deleteAllData()
+    }
+
     /** `SAPISID` or `__Secure-3PAPISID`: what the SAPISIDHASH header is made from. */
     internal fun hasSession(cookie: String?) = cookie != null && cookie.split(';').any {
       val name = it.substringBefore('=').trim()

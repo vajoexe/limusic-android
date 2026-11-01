@@ -28,14 +28,27 @@ export const platform = $state({
 	/** Kept clear of the status bar, cutout, navigation bar and (while open) the keyboard, in CSS
 	 *  pixels. Zero on the desktop. */
 	insets: { top: 0, right: 0, bottom: 0, left: 0 },
+	/** The on-screen keyboard is showing. Not the same as a text field having focus: Gboard's
+	 *  hide button puts the keyboard away and leaves the field focused. */
+	keyboard: false,
+	/** Its height in CSS pixels, 0 while hidden. Already part of `insets.bottom`. */
+	keyboardHeight: 0,
+	/** `insets.bottom` without the keyboard: the navigation bar's, as of the last time the keyboard
+	 *  was down (the system reports the two as one while it is up). */
+	barsBottom: 0,
 	/** Android's sign-in dialog: Google's sign-in page, or a pasted cookie (see `loginWebview`). */
 	signInOpen: false,
 	/** That dialog was opened to add another account rather than to sign in. */
 	signInAddAccount: false
 });
 
-function applyInsets([top, right, bottom, left]: [number, number, number, number]) {
+type Insets = [number, number, number, number, number];
+
+function applyInsets([top, right, bottom, left, keyboard]: Insets) {
 	platform.insets = { top, right, bottom, left };
+	platform.keyboard = keyboard > 0;
+	platform.keyboardHeight = keyboard;
+	if (keyboard <= 0) platform.barsBottom = bottom;
 	const s = document.documentElement.style;
 	s.setProperty('--inset-top', `${top}px`);
 	s.setProperty('--inset-right', `${right}px`);
@@ -70,10 +83,8 @@ export function initPlatform(): void {
 	low.addEventListener('change', syncShort);
 	// The activity reports the bars as they change (rotation, a DeX window crossing displays, the
 	// keyboard), and holds the latest for a page that loads after the first report.
-	invoke<[number, number, number, number]>('window_insets')
+	invoke<Insets>('window_insets')
 		.then(applyInsets)
 		.catch(() => {});
-	listen<[number, number, number, number]>('window-insets', (e) => applyInsets(e.payload)).catch(
-		() => {}
-	);
+	listen<Insets>('window-insets', (e) => applyInsets(e.payload)).catch(() => {});
 }

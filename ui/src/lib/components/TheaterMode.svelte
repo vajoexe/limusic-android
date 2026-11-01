@@ -914,6 +914,10 @@
 				: ''}"
 		></div>
 	{/if}
+	<!-- Phone, faded out: the columns have grown into its room (`roomFree`), so it lets touches
+	     through to them. Invisible, it was still on top of the bottom of the lyrics picker and took
+	     the tap on its search field, which closed the picker as a touch outside it. The first tap
+	     still only wakes the chrome (`swallowWakeTap`, on the view). -->
 	<div
 		role="group"
 		bind:clientHeight={dockH}
@@ -926,7 +930,9 @@
 			? 'px-6 pt-1 pb-2'
 			: short.current
 				? 'px-8 pt-2 pb-4 xl:px-14'
-				: 'px-8 pt-3 pb-7 xl:px-14'} {calm ? 'opacity-0' : ''} {phone && composing ? 'hidden' : ''}"
+				: 'px-8 pt-3 pb-7 xl:px-14'} {calm ? 'opacity-0' : ''} {phone && composing
+			? 'hidden'
+			: ''} {phone && roomFree ? 'pointer-events-none' : ''}"
 	>
 		<!-- Fixed-width slots for the times: the font may have no tabular figures, and the bar would
 		     shift a few px per tick (#463). -->

@@ -21,6 +21,7 @@
 	import { openItem, rowMeta } from '$lib/browse';
 	import { MOD } from '$lib/shortcuts';
 	import { thumb } from '$lib/thumb';
+	import { isAndroid, platform } from '$lib/platform.svelte';
 	import { t } from '$lib/i18n.svelte';
 
 	let {
@@ -53,6 +54,27 @@
 	let ctxItem = $state<BrowseItem | null>(null);
 	let debounce: ReturnType<typeof setTimeout> | undefined;
 	let root: HTMLDivElement;
+
+	// Android: the panel hangs below the field, and the keyboard covers the bottom half of the
+	// screen without shrinking the page (edge to edge), so the rows past its top edge were out of
+	// reach. The panel gets the band between the field and the keyboard (or the navigation bar) and
+	// scrolls inside it. Re-measured as the keyboard comes and goes and as the page scrolls the field.
+	let panelMax = $state<number | null>(null);
+	$effect(() => {
+		if (!isAndroid || !open) return;
+		const fit = () => {
+			const below = root.getBoundingClientRect().bottom;
+			panelMax = Math.max(120, window.innerHeight - platform.insets.bottom - below - 16);
+		};
+		void platform.insets.bottom;
+		fit();
+		window.addEventListener('resize', fit);
+		window.addEventListener('scroll', fit, true);
+		return () => {
+			window.removeEventListener('resize', fit);
+			window.removeEventListener('scroll', fit, true);
+		};
+	});
 
 	async function load(q: string) {
 		loadedFor = q;
@@ -99,6 +121,9 @@
 
 	function choose(item: BrowseItem) {
 		close();
+		// A phone: the field kept focus through the tap (rows preventDefault), so the keyboard stayed
+		// up over the player the song opens. A search submitted from the keyboard drops it too.
+		if (platform.compact) (document.activeElement as HTMLElement | null)?.blur();
 		openItem(item); // a song plays, everything else opens its page
 		onpick?.();
 	}
@@ -172,7 +197,10 @@
 			id="search-suggest"
 			role="listbox"
 			aria-label={t('a11y.search_preview')}
-			class="absolute top-full z-50 mt-2 overflow-hidden rounded-xl border bg-popover text-popover-foreground shadow-xl animate-in fade-in-0 zoom-in-95 duration-150 {panelClass}"
+			class="absolute top-full z-50 mt-2 {panelMax !== null
+				? 'overflow-y-auto overscroll-contain'
+				: 'overflow-hidden'} rounded-xl border bg-popover text-popover-foreground shadow-xl animate-in fade-in-0 zoom-in-95 duration-150 {panelClass}"
+			style:max-height={panelMax !== null ? `${panelMax}px` : undefined}
 		>
 			{#if loading && !items.length && !queries.length}
 				{#each Array(4) as _, i (i)}

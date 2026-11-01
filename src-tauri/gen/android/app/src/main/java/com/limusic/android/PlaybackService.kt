@@ -175,9 +175,14 @@ private class RustPlayer(private val context: Context, looper: Looper) : SimpleB
         if (!np.hasTrack) {
             return b.setPlaybackState(Player.STATE_IDLE).build()
         }
+        // The display title and subtitle as well: Media3 only fills the platform's DISPLAY_TITLE /
+        // DISPLAY_SUBTITLE when they are set, and system surfaces outside the notification (One UI's
+        // media chip by the camera, the lock screen's Now Bar) read those first.
         val meta = MediaMetadata.Builder()
             .setTitle(np.title)
+            .setDisplayTitle(np.title)
             .setArtist(np.artist)
+            .setSubtitle(np.artist)
             .setAlbumTitle(np.album)
             .setArtworkUri(np.cover?.let(Uri::parse))
             .setIsPlayable(true)

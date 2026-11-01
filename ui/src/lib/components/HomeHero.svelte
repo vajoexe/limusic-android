@@ -119,12 +119,13 @@
 					class="pointer-events-none absolute left-3 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-muted-foreground"
 				/>
 				<!-- The panel is wider than this field and hangs off its right edge: the rows carry
-				     artwork and two lines of text, which 20rem can't hold. -->
+				     artwork and two lines of text, which 20rem can't hold. On a phone it stops at the
+				     page's left gutter (px-6 each side) instead of running off the screen. -->
 				<SearchSuggest
 					bind:value={searchQuery}
 					placeholder={t('common.search')}
 					inputClass="rounded-full pl-9"
-					panelClass="right-0 w-[26rem]"
+					panelClass={platform.compact ? 'right-0 w-[min(26rem,calc(100vw-3rem))]' : 'right-0 w-[26rem]'}
 				/>
 			</form>
 		</div>

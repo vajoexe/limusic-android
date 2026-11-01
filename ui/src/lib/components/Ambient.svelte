@@ -107,6 +107,7 @@
 			raf = requestAnimationFrame(tick);
 		};
 
+		const stops: (() => void)[] = [];
 		// The picture's box against the canvas. Both move together while the view flies in, so this
 		// holds through the transform; a size change is what moves either, so an observer covers it.
 		const measure = () => {
@@ -131,7 +132,46 @@
 		ro.observe(canvas);
 		ro.observe(el);
 
-		const stops: (() => void)[] = [];
+		// A box that only moves fires no observer. The phone's theater does exactly that when its
+		// controls come and go: the stage's padding animates and the picture slides up or down at the
+		// same size, and the light stayed where the picture had been. So while a transition runs on
+		// anything around the picture, it is measured again every animation frame until that ends.
+		let follow = 0;
+		let followUntil = 0;
+		const track = () => {
+			follow = 0;
+			const c = canvas.getBoundingClientRect();
+			const r = el.getBoundingClientRect();
+			const x = r.left - c.left;
+			const y = r.top - c.top;
+			if (!pic || x !== pic.x || y !== pic.y || r.width !== pic.w || r.height !== pic.h) {
+				origin = { x: c.left, y: c.top };
+				pic = { x, y, w: r.width, h: r.height };
+				kick(true);
+			}
+			if (performance.now() < followUntil) follow = requestAnimationFrame(track);
+		};
+		const onTransition = (e: TransitionEvent) => {
+			const t = e.target;
+			if (!(t instanceof Element) || !t.contains(el)) return;
+			// The run's own length plus a frame, or one more look once it has ended.
+			const left =
+				e.type === 'transitionrun'
+					? (parseFloat(getComputedStyle(t).transitionDuration) || 0) * 1000
+					: 0;
+			followUntil = Math.max(followUntil, performance.now() + left + 50);
+			if (!follow) follow = requestAnimationFrame(track);
+		};
+		document.addEventListener('transitionrun', onTransition, true);
+		document.addEventListener('transitionend', onTransition, true);
+		document.addEventListener('transitioncancel', onTransition, true);
+		stops.push(() => {
+			cancelAnimationFrame(follow);
+			document.removeEventListener('transitionrun', onTransition, true);
+			document.removeEventListener('transitionend', onTransition, true);
+			document.removeEventListener('transitioncancel', onTransition, true);
+		});
+
 		let seq = 0;
 		let take = () => {};
 		if (native) {

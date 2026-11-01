@@ -50,6 +50,13 @@
             android:windowSoftInputMode="adjustResize"
             android:exported="false" />
 
+        <!-- Instead of the app when Android System WebView is too old for it (WebViewSupport). -->
+        <activity
+            android:name=".WebViewNoticeActivity"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|screenLayout|uiMode|density|navigation"
+            android:resizeableActivity="true"
+            android:exported="false" />
+
         <service
             android:name=".PlaybackService"
             android:foregroundServiceType="mediaPlayback"

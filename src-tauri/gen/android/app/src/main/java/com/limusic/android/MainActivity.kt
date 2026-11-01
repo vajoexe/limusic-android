@@ -71,7 +71,6 @@ class MainActivity : TauriActivity() {
     // In a desktop window (DeX, desktop windowing) hiding the bars leaves the window its size, so
     // theater mode asks for the whole display the way the desktop app does, and gives it back.
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM) {
-      android.util.Log.d("Limusic", "theater full screen on=$on multiWindow=$isInMultiWindowMode")
       if (on && isInMultiWindowMode && !windowFullscreen) {
         windowFullscreen = true
         requestFullscreenMode(FULLSCREEN_MODE_REQUEST_ENTER, fullscreenOutcome("enter"))
@@ -121,6 +120,9 @@ class MainActivity : TauriActivity() {
     // audio output needs the JVM from the first track on.
     NativeBridge.attach(this)
     super.onCreate(savedInstanceState)
+    // A WebView too old to draw the app (or none at all): a native notice over it, before this
+    // activity is ever shown.
+    WebViewNoticeActivity.takeOver(this)
     // Into the cutout on every edge (targetSdk 35+ already lays out there, this says so for
     // older releases too); `immersive` is when the page is told it may use that room.
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
@@ -171,6 +173,7 @@ class MainActivity : TauriActivity() {
         bars.right / d,
         maxOf(bars.bottom, ime.bottom) / d,
         bars.left / d,
+        ime.bottom / d,
       )
       insets
     }

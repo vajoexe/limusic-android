@@ -25,6 +25,7 @@
 	import { Input } from '$lib/components/ui/input';
 	import * as api from '$lib/api';
 	import { ui } from '$lib/player.svelte';
+	import { platform } from '$lib/platform.svelte';
 	import { t, currentLocale } from '$lib/i18n.svelte';
 	import { KIND_CLASS, KIND_LABEL, lyricsKind } from '$lib/lyricsSources';
 
@@ -86,6 +87,9 @@
 	let draftTitle = $state('');
 	let draftArtists = $state('');
 	let titleInput = $state<HTMLInputElement | null>(null);
+	/** Filled over the lyrics with the keyboard up (a phone on its side): the band above the keyboard
+	 *  is ~130px, so the search keeps it to itself, its fields on one row. */
+	const squeezed = $derived(fill && searchOpen && platform.keyboard);
 	/** The row being kept ('auto' for Automatic) while Rust stores the choice. */
 	let busy = $state<string | null>(null);
 
@@ -288,7 +292,10 @@
 
 {#snippet body()}
 	<!-- Filled (a phone on its side, ~250px tall), the hints go: the list of sources is the point. -->
-	<div class="flex items-start gap-3 border-b px-4 {fill ? 'pb-1.5 pt-2' : 'pb-3 pt-3.5'}">
+	<div
+		class="flex items-start gap-3 border-b px-4 {fill ? 'pb-1.5 pt-2' : 'pb-3 pt-3.5'}"
+		class:hidden={squeezed}
+	>
 		<div class="min-w-0 flex-1">
 			<p class="font-heading text-sm font-semibold">{t('lyrics.sources_title')}</p>
 			{#if !fill}
@@ -436,7 +443,7 @@
 		</div>
 	</div>
 
-	{#if lyrics?.synced}
+	{#if lyrics?.synced && !squeezed}
 		<!-- Filled, one slim row like the search one under it: the stepper at the right end, the
 		     reset (when there is one) just before it. -->
 		<div class="flex items-center border-t px-4 {fill ? 'gap-2 py-1' : 'gap-3 py-3'}">
@@ -495,15 +502,18 @@
 	{/if}
 
 	{#if searchOpen}
-		<form class="space-y-2 border-t px-4 py-3" onsubmit={search}>
+		<form
+			class="border-t {squeezed ? 'flex gap-2 px-3 py-1.5' : 'space-y-2 px-4 py-3'}"
+			onsubmit={search}
+		>
 			<Input
 				bind:ref={titleInput}
 				bind:value={draftTitle}
 				placeholder={t('lyrics.search_title')}
 				aria-label={t('lyrics.search_title')}
-				class="h-8"
+				class="h-8 {squeezed ? 'min-w-0 flex-1' : ''}"
 			/>
-			<div class="flex gap-2">
+			<div class="flex gap-2 {squeezed ? 'min-w-0 flex-1' : ''}">
 				<Input
 					bind:value={draftArtists}
 					placeholder={t('lyrics.search_artist')}

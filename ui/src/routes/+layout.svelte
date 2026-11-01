@@ -85,9 +85,11 @@
 	// The phone shell's mini player + navigation height. On <html>, since the selection bar and
 	// other floating pieces are positioned against the viewport, some of them from <body>.
 	let navDock = $state(0);
-	// A text field has focus, so the on-screen keyboard is up: the dock gives the room back, the
-	// way a phone app's bottom bar steps aside for the keyboard.
-	let typing = $state(false);
+	// A text field has focus and the on-screen keyboard is up: the dock gives the room back, the way
+	// a phone app's bottom bar steps aside for the keyboard. Both, since Gboard's hide button puts
+	// the keyboard away with the field still focused, and the dock has to come back then.
+	let focused = $state(false);
+	const typing = $derived(focused && platform.keyboard);
 	// The floating pill's height plus its gap, while it shows (it sits over the page, outside the
 	// measured row).
 	let pillHeight = $state(0);
@@ -288,7 +290,7 @@
 		// that moves focus while it renders fires focusin in the middle of Svelte's update, and a
 		// state write there throws `state_unsafe_mutation`.
 		const check = () =>
-			(typing = !!(document.activeElement?.isConnected && document.activeElement.matches(TEXT)));
+			(focused = !!(document.activeElement?.isConnected && document.activeElement.matches(TEXT)));
 		const focus = () => queueMicrotask(check);
 		// A search submitted from the phone's keyboard puts the keyboard away so the results show.
 		// After the form's own handler: the listener is on the document.

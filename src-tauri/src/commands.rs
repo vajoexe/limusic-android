@@ -795,16 +795,16 @@ pub async fn sign_in_cookie(state: St<'_>, cookie: String) -> Result<bool, Strin
     }
 }
 
-/// The area the page has to keep clear of system UI, in CSS pixels: `[top, right, bottom, left]`.
-/// Android only (the activity draws edge to edge, under the status and navigation bars, and the
-/// keyboard counts as a bottom bar while it is open); zeros everywhere else. Updates arrive as the
-/// `window-insets` event.
+/// The area the page has to keep clear of system UI, in CSS pixels: `[top, right, bottom, left,
+/// keyboard]`. Android only (the activity draws edge to edge, under the status and navigation bars,
+/// and the keyboard counts as a bottom bar while it is open; `keyboard` is its height alone, 0 while
+/// it is hidden); zeros everywhere else. Updates arrive as the `window-insets` event.
 #[tauri::command]
-pub fn window_insets() -> [f32; 4] {
+pub fn window_insets() -> [f32; 5] {
     #[cfg(target_os = "android")]
     return crate::android::insets();
     #[cfg(not(target_os = "android"))]
-    [0.0; 4]
+    [0.0; 5]
 }
 
 /// The current track, play state, position and duration in one shot. Events are the normal

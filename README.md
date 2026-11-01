@@ -12,7 +12,7 @@
   <h2><a href="https://github.com/vajoexe/limusic-android/releases">Download</a></h2>
 </div>
 
-> **NOTICE:** If you are experiencing broken UI rendering, your WebView version is probably too old. Reported issues regarding this matter will be ignored and closed.
+> **NOTICE:** Limusic needs Android System WebView **111 or newer**. With an older one the app shows a notice instead of a broken screen, and opens normally once WebView is updated. Reported issues about rendering on an outdated WebView will be ignored and closed.
 >
 > [How to update WebView](https://support.google.com/android/thread/103561027/an-update-regarding-app-crashes-and-system-webview?hl=en)
 
@@ -49,8 +49,7 @@ What works:
 
 - Home feed, search, artists, albums and playlists
 - Playback in the background and with the screen off, with the media
-  notification and media keys (lock screen controls and Bluetooth buttons have
-  not been checked yet)
+  notification and media keys, lock screen controls and Bluetooth buttons
 - The queue, shuffle, repeat and autoplay radio
 - Synced lyrics, line by line and word by word
 - Music videos, with ambient light behind them, and a fallback to audio if a
@@ -61,7 +60,7 @@ What works:
 - Your library: likes, playlists, saved albums and artists
 - Local music from a folder you pick
 - Portrait and landscape, with a wider layout for tablets and desktop windows
-- Samsung DeX is supported. Enable fullscreen for the app from the status bar to make theater mode fill the entire display.
+- Samsung DeX (tested on a Galaxy S24 FE). Enable fullscreen for the app from the status bar to make theater mode fill the entire display.
 
 What doesn't work, or works differently:
 
@@ -88,7 +87,21 @@ Download the APK from [Releases](https://github.com/vajoexe/limusic-android/rele
 and open it on your phone. Android will ask you to allow installs from your browser
 or file manager the first time.
 
-You need Android 8.0 or newer on a 64-bit ARM phone or tablet.
+You need Android 8.0 or newer and Android System WebView 111 or newer. The APK
+is universal: it runs natively on 64-bit ARM (`arm64-v8a`) phones and tablets
+and on 64-bit x86 (`x86_64`) devices such as emulators and some Chromebooks.
+
+### Why WebView 111
+
+The interface is a web page drawn by Android System WebView. Its colours are
+CSS `oklch()` colours and its scripts are built for Chromium 111, so an older
+WebView loses most colours and much of the layout. On startup the app checks
+which WebView is installed. If it is older than 111, the app shows a full-screen
+notice with a link to the Play Store and to
+[Google's instructions](https://support.google.com/android/thread/103561027/an-update-regarding-app-crashes-and-system-webview?hl=en).
+If the version can't be read, the app starts normally rather than guessing. To
+update, install the latest **Android System WebView** (or Chrome, on Android
+versions that use it as the WebView) from the Play Store, then reopen Limusic.
 
 Every release is signed with the same key. Its SHA-256 certificate fingerprint is:
 
@@ -121,16 +134,23 @@ scripts/android/fetch-libmpv.sh        # downloads libmpv, checks its SHA-256
 # Debug build for the emulator
 cargo tauri android build --debug --target x86_64 --apk
 
+# Debug build for both architectures, like the release
+cargo tauri android build --debug --target aarch64 --target x86_64 --apk
+
 # Signed release build for phones (see Release signing below)
 scripts/android/build-release.sh
 ```
 
-The APKs end up in `src-tauri/gen/android/app/build/outputs/apk/`. A release
-build made with plain `cargo tauri android build --target aarch64 --apk`, with
-no signing key set up, comes out unsigned.
+The APKs end up in `src-tauri/gen/android/app/build/outputs/apk/`.
+`build-release.sh` builds one universal APK with both `arm64-v8a` and `x86_64`
+libraries and lists the libraries it packed, per architecture, after signing.
+A release build made with plain `cargo tauri android build --apk`, with no
+signing key set up, comes out unsigned.
 
-Debug builds are around 500 MB because the Rust library keeps its debug
-symbols. A release build is about 100 MB.
+Debug builds are big because the Rust library keeps its debug symbols: about
+500 MB for one architecture and 1.5 GB for both. Release builds are much
+smaller; the universal one is larger than a single-architecture build because
+it carries both sets of libraries.
 
 ### Release signing
 

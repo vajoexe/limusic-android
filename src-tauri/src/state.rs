@@ -1072,6 +1072,9 @@ impl AppState {
     pub async fn remove_google_account(&self, id: &str) {
         let _turn = self.auth.lock().await;
         self.forget_account(id);
+        // Android's sign-in page keeps its own Google session; removing the account clears it.
+        #[cfg(target_os = "android")]
+        crate::android::forget_sign_in();
     }
 
     /// Delete a saved row, dropping to guest when it is the one driving requests. Active-ness

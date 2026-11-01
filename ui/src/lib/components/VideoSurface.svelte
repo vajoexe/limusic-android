@@ -11,6 +11,7 @@
 		video
 	} from '$lib/video.svelte';
 	import { logUi } from '$lib/errlog';
+	import { isAndroid } from '$lib/platform.svelte';
 	import { lt } from '$lib/lt.svelte';
 
 	// --- Music videos (plan 031) -------------------------------------------------------------
@@ -120,6 +121,9 @@
 
 	let parking = $state<HTMLElement | null>(null);
 	let el: HTMLVideoElement | null = null;
+	/** The stream's own width over height, 0 until it is known. Android shapes the box by it (see
+	 *  the class below). */
+	let ratio = $state(0);
 
 	// Two effects, not one: the reset must key on the *track*, or toggling back to artwork would
 	// throw the URL away and the way back would be a fresh download (#107). Effects run in
@@ -362,6 +366,10 @@
 		v.playsInline = true;
 		v.preload = 'auto';
 		v.addEventListener('loadedmetadata', syncVideo);
+		// `resize`: the size can change mid-stream (another format, an adaptive switch).
+		const shape = () => (ratio = v.videoHeight ? v.videoWidth / v.videoHeight : 0);
+		v.addEventListener('loadedmetadata', shape);
+		v.addEventListener('resize', shape);
 		v.addEventListener('canplay', syncVideo);
 		v.addEventListener('seeked', syncVideo);
 		v.addEventListener('error', () => {
@@ -427,11 +435,27 @@
 		// Cinema: the box is as big as the screen, so the picture fills it, with no 16:9 box and no
 		// rounded corners.
 		if (cinema()) {
+			el.style.aspectRatio = '';
 			el.className = 'h-full w-full bg-black object-contain';
 			return;
 		}
-		el.className = `w-full rounded-2xl bg-black object-contain ${
-			showVideo() ? 'aspect-video' : 'pointer-events-none absolute inset-0 h-full opacity-0'
+		// Android: a black outline ran round the rounded corners of a light video. Behind the picture
+		// was black, and the picture didn't reach the box's edges: a "16:9" upload is often 1920x1072,
+		// a 1.9:1 one (854x450) left black bands along the top and bottom, and the corners' clip is
+		// anti-aliased against that black. So the box takes the stream's own shape when that is
+		// wider than 16:9 (only ever shorter, so every layout made for a 16:9 picture still holds),
+		// and a picture within 2% of 16:9 covers its box. Either way nothing is behind it. A
+		// narrower one (4:3, a vertical video) keeps the 16:9 box and a real letterbox in black.
+		const wide = isAndroid && ratio > (16 / 9) * 1.02;
+		const fits = isAndroid && (wide || Math.abs(ratio / (16 / 9) - 1) < 0.02);
+		const fit = fits ? 'object-cover' : 'bg-black object-contain';
+		el.style.aspectRatio = wide && showVideo() ? String(ratio) : '';
+		el.className = `w-full rounded-2xl ${fit} ${
+			showVideo()
+				? wide
+					? ''
+					: 'aspect-video'
+				: 'pointer-events-none absolute inset-0 h-full opacity-0'
 		}`;
 	});
 </script>

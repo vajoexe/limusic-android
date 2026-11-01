@@ -8,4 +8,10 @@
     <string name="sign_in_checking">Checking your YouTube Music session…</string>
     <string name="sign_in_failed">Signing in didn\'t finish.</string>
     <string name="sign_in_unsupported">This device\'s Android System WebView is too old for the in-app sign-in. Update it from the Play Store, or paste a session cookie instead.</string>
+    <!-- WebViewNoticeActivity: the installed Android System WebView can't draw the app. -->
+    <string name="webview_outdated_title">Android System WebView needs an update</string>
+    <string name="webview_outdated_body">Limusic draws its screens with Android System WebView. This device has version %1$s, and Limusic needs version %2$d or newer. With an older one, colours and layout break.\n\nUpdate Android System WebView from the Play Store, then come back here.</string>
+    <string name="webview_missing_body">Limusic draws its screens with Android System WebView, and this device has no WebView installed or enabled. Install or enable Android System WebView, then come back here.</string>
+    <string name="webview_update">Update in the Play Store</string>
+    <string name="webview_help_link">How to update Android System WebView</string>
 </resources>

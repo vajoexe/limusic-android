@@ -156,11 +156,12 @@ enum Arg<'a> {
     Double(f64),
 }
 
-/// The system bars, display cutout and keyboard, in CSS pixels: top, right, bottom, left.
-static INSETS: Mutex<[f32; 4]> = Mutex::new([0.0; 4]);
+/// The system bars, display cutout and keyboard, in CSS pixels: top, right, bottom, left, then the
+/// keyboard's own height (already part of bottom).
+static INSETS: Mutex<[f32; 5]> = Mutex::new([0.0; 5]);
 
 /// Where the page must not put anything it wants seen or touched (`commands::window_insets`).
-pub fn insets() -> [f32; 4] {
+pub fn insets() -> [f32; 5] {
     *INSETS.lock().unwrap()
 }
 
@@ -174,8 +175,9 @@ pub extern "system" fn Java_com_limusic_android_NativeBridge_nativeInsets(
     right: jfloat,
     bottom: jfloat,
     left: jfloat,
+    keyboard: jfloat,
 ) {
-    let new = [top, right, bottom, left];
+    let new = [top, right, bottom, left, keyboard];
     let changed = {
         let mut cur = INSETS.lock().unwrap();
         std::mem::replace(&mut *cur, new) != new
@@ -358,6 +360,12 @@ pub fn open_sign_in(add_account: bool) -> Result<(), String> {
     }
     call("openSignIn", "(Z)V", &[Arg::Bool(add_account)]);
     Ok(())
+}
+
+/// An account was removed: clear the Google session `SignInActivity`'s WebView profile still holds
+/// from signing it in (see `SignInActivity.forget`).
+pub fn forget_sign_in() {
+    call("forgetSignIn", "()V", &[]);
 }
 
 /// The `Cookie` header `SignInActivity` read for music.youtube.com once Google's sign-in landed

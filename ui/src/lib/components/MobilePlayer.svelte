@@ -71,10 +71,28 @@
 		np.tab === 'lyrics' || np.tab === 'comments' ? np.tab : 'art'
 	);
 	/** A comment or reply is being typed. The keyboard takes half the screen, so the title and
-	 *  controls step aside for it, or the box and its send button end up under the keyboard. */
-	let typing = $state(false);
+	 *  controls step aside for it, or the box and its send button end up under the keyboard. Not
+	 *  once the keyboard is hidden with the box still focused (Gboard's hide button).
+	 *  The lyrics search counts too: its fields are in the source picker's popover, which lives
+	 *  outside this section (a portal), so focus is watched on the document. Left in place there,
+	 *  the title and controls squeezed the lyrics box the popover hangs from to nothing. */
+	let focused = $state(false);
+	const typing = $derived(focused && platform.keyboard);
 	const onFocus = () =>
-		queueMicrotask(() => (typing = !!document.activeElement?.matches('section textarea, section input')));
+		queueMicrotask(() => {
+			const el = document.activeElement;
+			focused =
+				!!el?.matches('textarea, input') &&
+				(!!sheet?.contains(el) || !!el.closest('[data-popover-content]'));
+		});
+	$effect(() => {
+		document.addEventListener('focusin', onFocus);
+		document.addEventListener('focusout', onFocus);
+		return () => {
+			document.removeEventListener('focusin', onFocus);
+			document.removeEventListener('focusout', onFocus);
+		};
+	});
 
 	const toggle = (v: 'lyrics' | 'queue' | 'comments') => {
 		view = view === v ? 'art' : v;
@@ -209,8 +227,6 @@
 	onpointermove={onMove}
 	onpointerup={onUp}
 	onpointercancel={onUp}
-	onfocusin={onFocus}
-	onfocusout={onFocus}
 	aria-label={t('mobile.player')}
 >
 	<!-- A phone on its side gets the desktop's theater mode, sized down for it (`phone`): a stage

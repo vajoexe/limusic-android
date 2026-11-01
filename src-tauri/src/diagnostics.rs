@@ -241,6 +241,14 @@ fn push_tail_chars(out: &mut String, text: &str, budget: usize) {
 /// 4. any run of 40+ token characters is assumed to be a credential;
 /// 5. IPv4 addresses go, except loopback (the video proxy's own address is worth keeping).
 fn redact(text: &str) -> String {
+    let homes: Vec<String> =
+        ["HOME", "USERPROFILE"].iter().filter_map(|var| std::env::var(var).ok()).collect();
+    redact_with_homes(text, &homes)
+}
+
+/// `redact` with the home directories given rather than read from the environment, so a test can
+/// pass its own without changing the process's `HOME` under every other test running beside it.
+fn redact_with_homes(text: &str, homes: &[String]) -> String {
     static SECRET_KV: LazyLock<Regex> = LazyLock::new(|| {
         Regex::new(
             // The leading class rules out a Rust module path: `app_lib::potoken: …` is a tracing
@@ -257,11 +265,9 @@ fn redact(text: &str) -> String {
         LazyLock::new(|| Regex::new(r"\b(?:\d{1,3}\.){3}\d{1,3}\b").unwrap());
 
     let mut text = text.to_string();
-    for var in ["HOME", "USERPROFILE"] {
-        if let Ok(home) = std::env::var(var) {
-            if home.len() > 1 {
-                text = text.replace(&home, "~");
-            }
+    for home in homes {
+        if home.len() > 1 {
+            text = text.replace(home.as_str(), "~");
         }
     }
     let text = SECRET_KV.replace_all(&text, "${1}${2}=<redacted>");
@@ -319,16 +325,12 @@ mod tests {
 
     #[test]
     fn redaction_takes_the_username_out_of_an_appimage_path() {
-        // The only test that touches HOME. Tests share a process, so the value is distinctive
-        // enough not to appear in any other test's input, and the old one is put back.
-        let saved = std::env::var("HOME").ok();
-        std::env::set_var("HOME", "/home/diag-user-7q");
-        let out =
-            redact("Env: RUST_LOG=info, APPIMAGE=/home/diag-user-7q/Downloads/limusic.AppImage\n");
-        match saved {
-            Some(home) => std::env::set_var("HOME", home),
-            None => std::env::remove_var("HOME"),
-        }
+        // The home directory is passed in, not set: tests share a process, and a `HOME` changed
+        // for this one broke another test that created a window at the same moment.
+        let out = redact_with_homes(
+            "Env: RUST_LOG=info, APPIMAGE=/home/diag-user-7q/Downloads/limusic.AppImage\n",
+            &["/home/diag-user-7q".to_string()],
+        );
         assert!(!out.contains("diag-user-7q"), "username survived redaction:\n{out}");
         assert!(out.contains("Env: RUST_LOG=info, APPIMAGE=~/Downloads/limusic.AppImage"), "{out}");
     }

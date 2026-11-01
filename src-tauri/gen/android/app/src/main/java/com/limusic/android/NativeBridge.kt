@@ -10,9 +10,6 @@ import android.os.SystemClock
 import android.provider.OpenableColumns
 import android.provider.Settings
 import android.util.Log
-import androidx.core.view.WindowCompat
-import androidx.core.view.WindowInsetsCompat
-import androidx.core.view.WindowInsetsControllerCompat
 import java.lang.ref.WeakReference
 
 /**
@@ -56,10 +53,11 @@ object NativeBridge {
         }
     }
 
-    /** System bar / cutout / IME insets in CSS pixels, for the page's safe area. */
-    fun insets(top: Float, right: Float, bottom: Float, left: Float) {
+    /** System bar / cutout / IME insets in CSS pixels, for the page's safe area, and the on-screen
+     *  keyboard's own height (0 while it is hidden), which `bottom` already includes. */
+    fun insets(top: Float, right: Float, bottom: Float, left: Float, keyboard: Float) {
         try {
-            nativeInsets(top, right, bottom, left)
+            nativeInsets(top, right, bottom, left, keyboard)
         } catch (e: UnsatisfiedLinkError) {
             Log.w(TAG, "insets before the native library loaded", e)
         }
@@ -104,7 +102,13 @@ object NativeBridge {
 
     @JvmStatic private external fun nativeAttach(context: Context)
     @JvmStatic private external fun nativeMediaCommand(cmd: String, arg: Double)
-    @JvmStatic private external fun nativeInsets(top: Float, right: Float, bottom: Float, left: Float)
+    @JvmStatic private external fun nativeInsets(
+        top: Float,
+        right: Float,
+        bottom: Float,
+        left: Float,
+        keyboard: Float,
+    )
     @JvmStatic private external fun nativeSignInCookie(cookie: String)
     @JvmStatic private external fun nativeFolderPicked(status: String, path: String?)
     @JvmStatic private external fun nativeAudioAccess(granted: Boolean)
@@ -140,18 +144,11 @@ object NativeBridge {
     @JvmStatic
     fun setImmersive(on: Boolean) {
         main.post {
+            // MainActivity (the only one `attach`ed) also hides the bars on its own (a phone on its
+            // side), and has to know theater wants them hidden so a rotation or a resume doesn't
+            // bring them back.
             val a = activity.get()?.takeUnless { it.isFinishing || it.isDestroyed } ?: return@post
-            // MainActivity also hides the bars on its own (a phone on its side), and has to know
-            // theater wants them hidden so a rotation or a resume doesn't bring them back.
-            if (a is MainActivity) return@post a.setTheaterFullscreen(on)
-            val controller = WindowCompat.getInsetsController(a.window, a.window.decorView)
-            if (on) {
-                controller.systemBarsBehavior =
-                    WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-                controller.hide(WindowInsetsCompat.Type.systemBars())
-            } else {
-                controller.show(WindowInsetsCompat.Type.systemBars())
-            }
+            (a as? MainActivity)?.setTheaterFullscreen(on)
         }
     }
 
@@ -210,6 +207,11 @@ object NativeBridge {
             if (from == null) intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             (from ?: appContext).startActivity(intent)
         }
+    }
+
+    @JvmStatic
+    fun forgetSignIn() {
+        main.post { SignInActivity.forget() }
     }
 
     @JvmStatic
