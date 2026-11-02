@@ -195,10 +195,15 @@ private class RustPlayer(private val context: Context, looper: Looper) : SimpleB
             .setDurationUs(if (np.durationMs > 0) np.durationMs * 1000 else C.TIME_UNSET)
             .setIsSeekable(np.durationMs > 0)
             .build()
+        // A track still being resolved is buffering with play-when-ready set: from that state Media3
+        // runs this service in the foreground, while the user who just pressed play is still in the
+        // app. Android 12+ refuses that request from the background, so waiting for the stream
+        // (seconds on a cold start) left the service out of the foreground whenever the user went
+        // home at once, and the process was frozen with the music in it.
         return b.setPlaylist(listOf(data))
             .setCurrentMediaItemIndex(0)
-            .setPlaybackState(Player.STATE_READY)
-            .setPlayWhenReady(np.playing, Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST)
+            .setPlaybackState(if (np.loading) Player.STATE_BUFFERING else Player.STATE_READY)
+            .setPlayWhenReady(np.playing || np.loading, Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST)
             .setContentPositionMs { np.currentPositionMs() }
             .build()
     }
@@ -257,7 +262,9 @@ private class RustPlayer(private val context: Context, looper: Looper) : SimpleB
                 pauseForFocus()
             }
         }
-        setPlayingResources(np.playing)
+        // Also while the next track is being resolved: with the screen off, the CPU and the radio
+        // are what that resolving runs on.
+        setPlayingResources(np.playing || np.loading)
         invalidateState()
     }
 
@@ -309,7 +316,7 @@ private class RustPlayer(private val context: Context, looper: Looper) : SimpleB
      * Keep the CPU and Wi-Fi up while streaming with the screen off, and listen for headphones
      * leaving. The foreground service alone keeps the process alive, not the radio.
      */
-    @SuppressLint("WakelockTimeout") // Held exactly while playing; released on every pause.
+    @SuppressLint("WakelockTimeout") // Held exactly while playing or loading; released on every pause.
     private fun setPlayingResources(playing: Boolean) {
         if (playing) {
             if (!wake.isHeld) wake.acquire()

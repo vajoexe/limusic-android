@@ -59,5 +59,13 @@ echo
 # What is actually inside, not what the file name says: one line per ABI with its library count.
 echo "Native libraries:"
 unzip -l "$apk" | awk '$4 ~ /^lib\/[^/]+\/.+\.so$/ { split($4, p, "/"); n[p[2]]++ } END { for (a in n) printf "  %s: %d\n", a, n[a] }'
+# Named after the version Gradle put in it (versionName, from src-tauri/android-port.properties),
+# so the file name and the version the app reports can't disagree.
+build_tools="$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -n1)"
+version="$("$build_tools/aapt2" dump badging "$apk" | sed -n "s/.*versionName='\([^']*\)'.*/\1/p" | head -n1)"
+[ -n "$version" ] || { echo "Could not read the version out of $apk" >&2; exit 1; }
+named="$(dirname "$apk")/limusic-$version.apk"
+cp "$apk" "$named"
 echo
-echo "Signed release APK: $apk"
+echo "Signed release APK: $named"
+echo "SHA-256: $(sha256sum "$named" | cut -d' ' -f1)"

@@ -8,17 +8,10 @@
 	<p align="center"> wrappers, so those are handled too and any other stray tag is dropped rather
 	than shown as text.
 -->
-<script lang="ts">
-	import { releaseNotes, openExternal } from '$lib/api';
-	import { t } from '$lib/i18n.svelte';
-	import { friendlyNetError } from '$lib/neterr';
-
-	let { current }: { current: string } = $props();
-
-	const load = releaseNotes();
-
-	type Span = { t: 'text' | 'b' | 'code' | 'link'; s: string; href?: string };
-	type Block =
+<script lang="ts" module>
+	// The parser, on its own: the Android update notice shows a release's notes too.
+	export type Span = { t: 'text' | 'b' | 'code' | 'link'; s: string; href?: string };
+	export type Block =
 		| { t: 'h'; spans: Span[] }
 		| { t: 'p'; spans: Span[] }
 		| { t: 'ul'; items: Span[][] }
@@ -47,7 +40,7 @@
 	}
 
 	/** Line-based on purpose: release notes are headings, bullets and one-line paragraphs. */
-	function parse(body: string): Block[] {
+	export function parse(body: string): Block[] {
 		const blocks: Block[] = [];
 		let fenced: string[] | null = null;
 		for (const raw of body.replaceAll('\r', '').split('\n')) {
@@ -77,6 +70,17 @@
 		}
 		return blocks;
 	}
+</script>
+
+<script lang="ts">
+	import { releaseNotes, openExternal } from '$lib/api';
+	import { t } from '$lib/i18n.svelte';
+	import { friendlyNetError } from '$lib/neterr';
+	import { isAndroid } from '$lib/platform.svelte';
+
+	let { current }: { current: string } = $props();
+
+	const load = releaseNotes();
 
 	const day = (iso: string) =>
 		iso ? new Date(iso).toLocaleDateString(undefined, { dateStyle: 'medium' }) : '';
@@ -92,7 +96,8 @@
 		<details class="border-b last:border-b-0" open={i === 0}>
 			<summary class="flex cursor-pointer items-center gap-2 py-2 text-sm marker:text-muted-foreground">
 				<span class="font-medium">{t('changelog.version', { version: r.version })}</span>
-				{#if r.version === current}
+				<!-- Android lists the installed release alone, under its tag's name. -->
+				{#if r.version === current || isAndroid}
 					<span class="rounded bg-primary/15 px-1.5 py-0.5 text-xs text-primary">{t('changelog.installed')}</span>
 				{/if}
 				<span class="ml-auto text-xs text-muted-foreground">{day(r.date)}</span>

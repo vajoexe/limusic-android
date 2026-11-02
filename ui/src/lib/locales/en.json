@@ -1397,5 +1397,13 @@
 		"playing_from": "Playing from",
 		"navigation": "Main navigation",
 		"dismiss_playing": "Pause first to put the player away"
+	},
+	"android_update": {
+		"title": "Update available",
+		"body": "Limusic for Android {version} is out. You have {installed}. Updating brings you the changes below.",
+		"whats_new": "What's new",
+		"more": "And more on the release page.",
+		"no_notes": "See the release page for what it changes.",
+		"update": "Update"
 	}
 }

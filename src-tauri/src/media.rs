@@ -26,6 +26,10 @@ enum MediaUpdate {
         cover: Option<String>,
     },
     Album(String), // learned after the track's metadata went out; keeps the duration
+    /// Android: a track is being resolved and will play once it is (`Some`), or that attempt
+    /// ended without it playing (`None`). See `android::media_loading`.
+    #[cfg(target_os = "android")]
+    Loading(Option<(String, String, Option<String>, Option<String>)>),
     Duration(f64),
     Playback {
         playing: bool,
@@ -57,6 +61,26 @@ impl MediaHandle {
             album: album.map(str::to_owned),
             cover: cover.map(str::to_owned),
         });
+    }
+
+    /// Android: `title` is being resolved and will start playing by itself. The media session
+    /// takes it as "buffering, will play", which is what lets the service go foreground while the
+    /// app is still on screen, rather than once the stream starts, possibly from the background.
+    #[cfg(target_os = "android")]
+    pub fn set_loading(&self, title: &str, artist: &str, album: Option<&str>, cover: Option<&str>) {
+        let _ = self.tx.send(MediaUpdate::Loading(Some((
+            title.to_owned(),
+            artist.to_owned(),
+            album.map(str::to_owned),
+            cover.map(str::to_owned),
+        ))));
+    }
+
+    /// Android: the track announced by `set_loading` is not going to play (it failed, or there
+    /// was nothing left to try).
+    #[cfg(target_os = "android")]
+    pub fn cancel_loading(&self) {
+        let _ = self.tx.send(MediaUpdate::Loading(None));
     }
 
     /// A search or home card starts playing with no album name; the radio fetched behind it
@@ -206,6 +230,10 @@ fn run_android(rx: std::sync::mpsc::Receiver<MediaUpdate>) {
                 android::media_metadata(&title, &artist, album.as_deref(), cover.as_deref())
             }
             MediaUpdate::Album(album) => android::media_album(&album),
+            MediaUpdate::Loading(Some((title, artist, album, cover))) => {
+                android::media_loading(&title, &artist, album.as_deref(), cover.as_deref())
+            }
+            MediaUpdate::Loading(None) => android::media_loading_cancelled(),
             MediaUpdate::Duration(secs) => android::media_duration(secs),
             MediaUpdate::Playback { playing, pos } => android::media_playback(playing, pos),
             // The hardware volume keys drive the stream volume; the in-app slider scales mpv's

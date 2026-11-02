@@ -325,6 +325,24 @@ pub fn media_metadata(title: &str, artist: &str, album: Option<&str>, cover: Opt
     );
 }
 
+/// A track is being resolved and will play once it is: the session shows it as buffering with
+/// play-when-ready set. Media3 runs its service in the foreground from that state, so the service
+/// goes foreground while the user is still in the app. Waiting for the stream instead (seconds on
+/// a cold start) put that request in the background whenever the user left at once, where Android
+/// 12+ refuses it, and a process without a foreground service is frozen with the music in it.
+pub fn media_loading(title: &str, artist: &str, album: Option<&str>, cover: Option<&str>) {
+    call(
+        "mediaLoading",
+        &format!("({STR}{STR}{STR}{STR})V"),
+        &[Arg::Str(Some(title)), Arg::Str(Some(artist)), Arg::Str(album), Arg::Str(cover)],
+    );
+}
+
+/// The track `media_loading` announced is not going to play.
+pub fn media_loading_cancelled() {
+    call("mediaLoadingCancelled", "()V", &[]);
+}
+
 pub fn media_album(album: &str) {
     call("mediaAlbum", &format!("({STR})V"), &[Arg::Str(Some(album))]);
 }

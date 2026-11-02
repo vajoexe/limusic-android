@@ -14,6 +14,21 @@ fn main() {
             }
         }
     }
+    // The Android port's revision (port_version.rs), from the one file that sets it. Gradle reads
+    // the same file for the APK's versionName and versionCode.
+    println!("cargo:rerun-if-changed=android-port.properties");
+    let revision = std::fs::read_to_string("android-port.properties")
+        .ok()
+        .and_then(|props| {
+            props.lines().find_map(|line| {
+                let (k, v) = line.split_once('=')?;
+                (k.trim() == "revision").then(|| v.trim().to_string())
+            })
+        })
+        .filter(|v| v.parse::<u32>().is_ok())
+        .expect("android-port.properties must set revision=<number>");
+    println!("cargo:rustc-env=LIMUSIC_ANDROID_REVISION={revision}");
+
     // tauri-build watches tauri.conf.json but not the icons it embeds, so editing a PNG here
     // leaves `generate_context!` emitting the old `default_window_icon` (window, tray, taskbar).
     println!("cargo:rerun-if-changed=icons");

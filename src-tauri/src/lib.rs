@@ -34,6 +34,7 @@ mod nativevideo;
 mod nativevideo;
 mod notify;
 mod orchestrator;
+mod port_version;
 mod potoken;
 mod romanize;
 #[cfg_attr(mobile, allow(dead_code))]
@@ -1287,6 +1288,8 @@ pub fn run() {
             commands::listenbrainz_profile,
             commands::theater_fullscreen,
             commands::release_notes,
+            commands::android_version,
+            commands::android_update_check,
             commands::can_self_update,
             commands::check_beta_update,
             commands::open_external,

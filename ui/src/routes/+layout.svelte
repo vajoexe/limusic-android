@@ -66,6 +66,8 @@
 	import { initZoom } from '$lib/zoom.svelte';
 	import { initShortcuts } from '$lib/shortcuts';
 	import { initErrorLog } from '$lib/errlog';
+	import AndroidUpdateDialog from '$lib/components/AndroidUpdateDialog.svelte';
+	import { checkForAndroidUpdate, loadAndroidVersion } from '$lib/androidPort.svelte';
 	import {
 		updateState,
 		availableMessage,
@@ -337,8 +339,13 @@
 		}
 		// First: it reveals the window (see initWin).
 		const teardownWin = initWin();
-		// Android updates come through whoever installed the APK; the updater plugin is desktop-only.
+		// The updater plugin is desktop-only. Android asks the port's GitHub releases instead, once
+		// per launch and in the background (`checkForAndroidUpdate`), and points at the download.
 		if (!isAndroid) checkForUpdatesQuiet();
+		else {
+			loadAndroidVersion();
+			checkForAndroidUpdate();
+		}
 		// Repeat while the app stays open: ✕ hides to tray by default, so this component can stay
 		// mounted for days and a mount-only check would never see a release published in between.
 		const updateTimer = isAndroid ? undefined : setInterval(checkForUpdatesQuiet, QUIET_INTERVAL_MS);
@@ -545,6 +552,9 @@
 	     <body>, so a z-50 banner loses the tie on DOM order and hides behind an open modal. The update
 	     banner also needs pointer-events-auto: an open dialog sets `pointer-events: none` on <body>,
 	     so without it the banner shows above the modal but its buttons can't be clicked. -->
+	{#if isAndroid}
+		<AndroidUpdateDialog />
+	{/if}
 	{#if updateState.available}
 		<div
 			transition:fly={{ y: 16, duration: 220, easing: cubicOut }}

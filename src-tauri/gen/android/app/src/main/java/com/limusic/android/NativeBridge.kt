@@ -121,6 +121,17 @@ object NativeBridge {
         main.post { nowPlaying.setTrack(title, artist, album, cover) }
     }
 
+    /** A track is being resolved and will play once it is (`android::media_loading`). */
+    @JvmStatic
+    fun mediaLoading(title: String, artist: String, album: String?, cover: String?) {
+        main.post { nowPlaying.setLoading(title, artist, album, cover) }
+    }
+
+    @JvmStatic
+    fun mediaLoadingCancelled() {
+        main.post { nowPlaying.cancelLoading() }
+    }
+
     @JvmStatic
     fun mediaAlbum(album: String) {
         main.post { nowPlaying.setAlbum(album) }
@@ -254,6 +265,13 @@ class NowPlaying {
         private set
     var playing = false
         private set
+    /**
+     * Announced and on its way, not playing yet: Rust is resolving the stream ([setLoading]). The
+     * session shows it as buffering and about to play. Ends when it plays, fails, or the user
+     * pauses it.
+     */
+    var loading = false
+        private set
     private var positionMs = 0L
     /** `elapsedRealtime` when [positionMs] was true. */
     private var positionAt = 0L
@@ -267,7 +285,12 @@ class NowPlaying {
     val hasTrack get() = title != null
 
     fun setTrack(title: String, artist: String, album: String?, cover: String?) {
-        generation++
+        // The track that was announced loading ([setLoading]) stays the same item now that it
+        // plays: a new one reads as another track change to the system's media surfaces, and One
+        // UI's chip starts its title over for each.
+        val announced = loading && title == this.title && artist == this.artist
+        loading = false
+        if (!announced) generation++
         this.title = title
         this.artist = artist
         this.album = album
@@ -278,8 +301,30 @@ class NowPlaying {
         changed()
     }
 
+    /** The track Rust is about to play. A new item, as [setTrack] makes, but not playing yet. */
+    fun setLoading(title: String, artist: String, album: String?, cover: String?) {
+        generation++
+        this.title = title
+        this.artist = artist
+        this.album = album
+        this.cover = cover
+        durationMs = -1
+        playing = false
+        loading = true
+        positionMs = 0
+        positionAt = SystemClock.elapsedRealtime()
+        changed()
+    }
+
+    fun cancelLoading() {
+        if (!loading) return
+        loading = false
+        changed()
+    }
+
     /** No track any more (the mini player's session was dismissed). */
     fun clear() {
+        loading = false
         generation++
         title = null
         artist = null
@@ -304,6 +349,9 @@ class NowPlaying {
 
     fun setPlayback(playing: Boolean, posSecs: Double) {
         this.playing = playing
+        // Playing is the loading done. A pause is not the end of it: the track that was playing
+        // before stops while the new one is still being resolved, and reports that.
+        if (playing) loading = false
         positionMs = if (posSecs.isFinite() && posSecs > 0) (posSecs * 1000).toLong() else 0
         positionAt = SystemClock.elapsedRealtime()
         changed()
@@ -317,6 +365,7 @@ class NowPlaying {
 
     /** The session's own guess while a command is in flight to Rust, so its UI doesn't flicker. */
     fun assumePlaying(playing: Boolean) {
+        if (!playing) loading = false
         positionMs = currentPositionMs()
         positionAt = SystemClock.elapsedRealtime()
         this.playing = playing

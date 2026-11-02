@@ -50,6 +50,7 @@
 	import LyricsSourcesSettings from '$lib/components/LyricsSourcesSettings.svelte';
 	import LanguagePicker from '$lib/components/LanguagePicker.svelte';
 	import { isAndroid, platform } from '$lib/platform.svelte';
+	import { ANDROID_ISSUES_URL, loadAndroidVersion, port } from '$lib/androidPort.svelte';
 
 	type TabId =
 		| 'general'
@@ -108,7 +109,14 @@
 	let loaded = $state(false);
 	let clearing = $state(false);
 	let version = $state('');
-	getVersion().then((v) => (version = v));
+	// Android: the port's version, with the architecture this copy runs as
+	// (1.4.0-rc.3-arm64-v8a-android.2; `port_version.rs`). The app plugin's version isn't
+	// reachable there, and would only be the upstream half of it anyway.
+	if (isAndroid) loadAndroidVersion();
+	else getVersion().then((v) => (version = v));
+	const versionLabel = $derived(
+		isAndroid ? (port.version?.running ?? '') : version && `v${version}`
+	);
 	// Release candidates ship only what the updater installs, so an .rpm, .deb or AUR install has
 	// nothing to take from the beta channel. Shown in dev, which is never the AppImage either.
 	let betaAvailable = $state(import.meta.env.DEV);
@@ -186,6 +194,13 @@
 
 	async function openBugForm() {
 		diagError = '';
+		// The Android port's repository has no issue templates (and so no prefill): straight to its
+		// issue list, where "New issue" is one tap. "Copy diagnostics" above is how the system
+		// details get there.
+		if (isAndroid) {
+			await api.openExternal(ANDROID_ISSUES_URL).catch((e) => (diagError = String(e)));
+			return;
+		}
 		try {
 			// GitHub's prefill only reaches `input` and `textarea` fields, so the "Which system?"
 			// dropdown stays the user's one click and everything the app knows goes in `system`.
@@ -195,9 +210,7 @@
 				version,
 				system
 			});
-			// The Android port is its own repository: its bugs are no use to the desktop tracker.
-			const repo = isAndroid ? 'vajoexe/limusic-android' : 'SimoHypers/limusic';
-			await api.openExternal(`https://github.com/${repo}/issues/new?${q}`);
+			await api.openExternal(`https://github.com/SimoHypers/limusic/issues/new?${q}`);
 		} catch (e) {
 			diagError = String(e);
 		}
@@ -531,8 +544,8 @@
 						</button>
 					{/each}
 				</div>
-				{#if version && !platform.compact}
-					<span class="mt-auto px-3 pb-1 text-[11px] text-muted-foreground">v{version}</span>
+				{#if versionLabel && !platform.compact}
+					<span class="mt-auto px-3 pb-1 text-[11px] text-muted-foreground">{versionLabel}</span>
 				{/if}
 			</nav>
 
@@ -802,13 +815,13 @@
 						<div
 							class="mb-7 rounded-xl border bg-gradient-to-br from-primary/8 to-transparent px-4 py-4"
 						>
-							<div class="flex items-center gap-2">
+							<div class="flex flex-wrap items-center gap-2">
 								<span class="font-heading text-lg font-bold">Limusic</span>
-								{#if version}
+								{#if versionLabel}
 									<span
 										class="rounded-full bg-primary/12 px-2 py-0.5 text-[11px] font-semibold text-primary"
 									>
-										v{version}
+										{versionLabel}
 									</span>
 								{/if}
 							</div>
@@ -891,7 +904,10 @@
 							<div class={CARD}>
 								{@render row({
 									title: t('settings.about.changelog'),
-									desc: t('settings.about.version').replace('{version}', version),
+									desc: t('settings.about.version').replace(
+										'{version}',
+										isAndroid ? (port.version?.release ?? '') : version
+									),
 									below: changelog
 								})}
 							</div>

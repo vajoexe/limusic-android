@@ -14,6 +14,28 @@ val tauriProperties = Properties().apply {
     }
 }
 
+// The Android port's version (src-tauri/android-port.properties): the upstream version Tauri hands
+// over in tauri.properties, plus the port's revision. versionName is the release's name,
+// 1.4.0-rc.3-universal-android.2. versionCode packs the same numbers so every later release is
+// higher: major, minor and patch (two digits each), the release candidate (01-98, 99 for the
+// final release, which comes after its candidates), then the revision (two digits).
+// 1.4.0-rc.3 revision 2 is 104000302. Tauri's own code ignores the release candidate, so 1.4.0
+// would have come out lower than 1.4.0-rc.3 revision 5, and Android refuses that as a downgrade.
+val portRevision = Properties().apply {
+    rootProject.file("../../android-port.properties").inputStream().use { load(it) }
+}.getProperty("revision").trim().toInt()
+val upstreamVersion = tauriProperties.getProperty("tauri.android.versionName", "0.0.0")
+val portVersionCode = run {
+    val m = Regex("^(\\d+)\\.(\\d+)\\.(\\d+)(?:-rc\\.(\\d+))?$").matchEntire(upstreamVersion)
+        ?: error("upstream version $upstreamVersion is not X.Y.Z or X.Y.Z-rc.N")
+    val (major, minor, patch) = (1..3).map { m.groupValues[it].toInt() }
+    val rc = m.groupValues[4].ifEmpty { "99" }.toInt()
+    require(minor < 100 && patch < 100 && rc in 1..99 && portRevision in 1..99) {
+        "version $upstreamVersion revision $portRevision does not fit versionCode's digits"
+    }
+    (((major * 100 + minor) * 100 + patch) * 100 + rc) * 100 + portRevision
+}
+
 // Release signing, never committed: `src-tauri/gen/android/keystore.properties` (gitignored) with
 // storeFile, storePassword, keyAlias and keyPassword, or the LIMUSIC_ANDROID_* environment variables
 // of the same names for CI. Without either, the release APK is built unsigned (sign it with
@@ -37,8 +59,8 @@ android {
         applicationId = "com.limusic.android"
         minSdk = 26
         targetSdk = 37
-        versionCode = tauriProperties.getProperty("tauri.android.versionCode", "1").toInt()
-        versionName = tauriProperties.getProperty("tauri.android.versionName", "1.0")
+        versionCode = portVersionCode
+        versionName = "$upstreamVersion-universal-android.$portRevision"
     }
     val releaseStore = signingValue("storeFile")
     if (releaseStore != null) {

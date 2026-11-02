@@ -2140,6 +2140,22 @@ impl AppState {
     /// Resolve + load the current track into mpv (replace). Returns false if resolve failed or the
     /// request was superseded.
     async fn start_current(self: &std::sync::Arc<Self>, gen: u64) -> bool {
+        // Android announced the track as loading (`resolve_and_start`); one that won't play has to
+        // say so, or the media session would show it buffering, and keep its foreground service,
+        // for good. A guard rather than a check after the await: it also runs when the resolve
+        // panics (rustypipe 0.11.4 unwraps a failed request offline, visitor_data.rs) or the task
+        // is dropped, which never get as far as a check. A newer start makes its own announcement.
+        #[cfg(target_os = "android")]
+        let mut loading = LoadingGuard { state: self, gen, started: false };
+        let started = self.resolve_and_start(gen).await;
+        #[cfg(target_os = "android")]
+        {
+            loading.started = started;
+        }
+        started
+    }
+
+    async fn resolve_and_start(self: &std::sync::Arc<Self>, gen: u64) -> bool {
         // Resolve the current track, auto-skipping any that no client can play (dead / region-locked
         // videos — context/06 "no client could resolve") instead of stalling the queue on them.
         // Bounded: each failure advances current by one, so the loop terminates at the queue tail.
@@ -2148,6 +2164,14 @@ impl AppState {
                 return false; // user moved on
             }
             let Some(item) = self.current_item().await else { return false };
+            // The media session hears about the track now, seconds before it can play, so the
+            // playback service goes foreground while the user is still in the app (see
+            // `android::media_loading`).
+            #[cfg(target_os = "android")]
+            if let Some(m) = &self.media {
+                let cover = media_cover(&item);
+                m.set_loading(&item.title, &item.artists, item.album.as_deref(), cover.as_deref());
+            }
             let resolved = self
                 .resolve(
                     &item.video_id,
@@ -2647,16 +2671,7 @@ impl AppState {
         let _ = self.app.emit("playback-state", "playing");
         // Push the same metadata to the OS media widget (context/16) and Discord.
         if let Some(m) = &self.media {
-            // MPRIS/SMTC want a URL; a local track's artwork is a path, so hand it a file:// one.
-            // Scheme, not leading slash: a Windows cover path is `C:\...`, and SMTC drops the whole
-            // metadata update (cover included) when the thumbnail URI won't parse.
-            let cover = item.thumbnail.as_ref().map(|t| {
-                if t.contains("://") {
-                    crate::media::cover_url(t)
-                } else {
-                    format!("file://{t}")
-                }
-            });
+            let cover = media_cover(item);
             m.set_metadata(&item.title, &item.artists, item.album.as_deref(), cover.as_deref());
         }
         if let Some(d) = &self.discord {
@@ -4770,6 +4785,40 @@ fn shuffle_new_queue(items: &mut [SongItem], start: usize) -> usize {
 /// which degrades to the old behavior rather than refusing every cache hit.
 fn cache_horizon(now: i64, duration_secs: i64) -> i64 {
     now + 60 + duration_secs.max(0)
+}
+
+/// The artwork as the OS media controls want it: MPRIS/SMTC take a URL, and a local track's
+/// artwork is a path, so it becomes a file:// one. Scheme, not leading slash: a Windows cover path
+/// is `C:\...`, and SMTC drops the whole metadata update (cover included) when the thumbnail URI
+/// won't parse.
+/// Withdraws the media session's "loading" announcement for start `gen` when it ends without
+/// playing, however it ends (see `AppState::start_current`).
+#[cfg(target_os = "android")]
+struct LoadingGuard<'a> {
+    state: &'a AppState,
+    gen: u64,
+    started: bool,
+}
+
+#[cfg(target_os = "android")]
+impl Drop for LoadingGuard<'_> {
+    fn drop(&mut self) {
+        if !self.started && self.state.generation.load(Ordering::SeqCst) == self.gen {
+            if let Some(m) = &self.state.media {
+                m.cancel_loading();
+            }
+        }
+    }
+}
+
+fn media_cover(item: &SongItem) -> Option<String> {
+    item.thumbnail.as_ref().map(|t| {
+        if t.contains("://") {
+            crate::media::cover_url(t)
+        } else {
+            format!("file://{t}")
+        }
+    })
 }
 
 /// Parse a `"m:ss"` / `"h:mm:ss"` duration string to ms (0 if absent/unparseable).

@@ -77,7 +77,13 @@ What doesn't work, or works differently:
   than the one YouTube Music's web API accepts. If Google ever blocks the page,
   pasting cookies still works.
 - **Tray, mini player window, global hotkeys, start on login and the
-  self-updater** are desktop features with no Android equivalent.
+  self-updater** are desktop features with no Android equivalent. Instead of
+  updating itself, the app tells you when a newer release is out (see
+  [Updates](#updates)).
+- **Samsung's Now Bar and media pill** get the title and artist of every track
+  from the app, but One UI decides whether and when long titles scroll. Apps
+  have no control over that, so the scrolling can look inconsistent between
+  tracks.
 - If Android kills the app in the background, the notification can't restart
   playback yet. Open the app again instead.
 
@@ -90,6 +96,20 @@ or file manager the first time.
 You need Android 8.0 or newer and Android System WebView 111 or newer. The APK
 is universal: it runs natively on 64-bit ARM (`arm64-v8a`) phones and tablets
 and on 64-bit x86 (`x86_64`) devices such as emulators and some Chromebooks.
+
+### Updates
+
+Each time it starts, the app asks GitHub for this repository's latest release.
+If that release is newer than the installed one, it shows what changed and an
+**Update** button that opens the Releases page. Close it with the X or by
+tapping outside it, and it stays closed until the next start. Offline, or if
+GitHub can't be reached, the app starts as usual and says nothing. Nothing is
+downloaded or installed for you.
+
+Versions look like `1.4.0-rc.3-universal-android.2`: the upstream Limusic
+version it is built on, then the port's own revision. Settings > About shows the
+architecture running on your device in place of `universal`, for example
+`1.4.0-rc.3-arm64-v8a-android.2`. It is the same release.
 
 ### Why WebView 111
 
@@ -146,6 +166,19 @@ The APKs end up in `src-tauri/gen/android/app/build/outputs/apk/`.
 libraries and lists the libraries it packed, per architecture, after signing.
 A release build made with plain `cargo tauri android build --apk`, with no
 signing key set up, comes out unsigned.
+
+The version is set in one place. The upstream part is the Cargo workspace
+version. The port's revision is `revision` in
+[`src-tauri/android-port.properties`](src-tauri/android-port.properties). Before
+each release, raise it by one, or set it back to 1 when moving to a new
+upstream version. Gradle's `versionName` and `versionCode`, the About page, the
+update check and the release APK's file name
+(`limusic-1.4.0-rc.3-universal-android.2.apk`) all come from those two. Tag the
+GitHub release `v<version>`, for example `v1.4.0-rc.3-android.2` or
+`v1.4.0-rc.3-universal-android.2`, and mark it as the latest release. The update
+check only looks at the latest release. Settings > About shows the notes of the
+release whose tag matches the installed version, so a tag in any other format
+leaves both of them blank.
 
 Debug builds are big because the Rust library keeps its debug symbols: about
 500 MB for one architecture and 1.5 GB for both. Release builds are much

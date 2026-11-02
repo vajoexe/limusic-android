@@ -521,8 +521,26 @@ export interface ReleaseNote {
 	date: string;
 	body: string;
 }
-/** Changelog for Settings > About, from the GitHub releases API (cached in Rust per run). */
+/** Changelog for Settings > About, from the GitHub releases API (cached in Rust per run). On
+ *  Android, only the installed port release's own notes. */
 export const releaseNotes = () => invoke<ReleaseNote[]>('release_notes');
+/** The Android port's version (`port_version.rs`): `release` is the APK's name
+ *  (`1.4.0-rc.3-universal-android.2`), `running` names the architecture this copy runs as
+ *  (`1.4.0-rc.3-arm64-v8a-android.2`). */
+export interface AndroidVersion {
+	release: string;
+	running: string;
+	abi: string;
+}
+export const androidVersion = () => invoke<AndroidVersion>('android_version');
+/** A newer Android port release than this one (GitHub's Latest), or `null`. Rejects when GitHub
+ *  can't be reached or answers with something that isn't a release. */
+export interface AndroidUpdate {
+	version: string;
+	/** The release description, verbatim markdown. */
+	notes: string;
+}
+export const androidUpdateCheck = () => invoke<AndroidUpdate | null>('android_update_check');
 /** False on Linux builds that aren't the AppImage (.rpm, the AUR package): they update through the
  *  package manager, so the UI offers a download link instead of an install button. */
 export const canSelfUpdate = () => invoke<boolean>('can_self_update');

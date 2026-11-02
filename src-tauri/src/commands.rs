@@ -2639,9 +2639,18 @@ pub async fn release_notes() -> Result<Vec<ReleaseNote>, String> {
         .json()
         .await
         .map_err(|e| e.to_string())?;
+    // The Android port shows the notes of the release installed and nothing else: the upstream
+    // history describes the desktop app, and the port's earlier revisions are behind the user. A
+    // build with no published release (a local build) has none to show.
+    let installed = crate::port_version::installed();
     let notes: Vec<ReleaseNote> = releases
         .into_iter()
         .filter(|r| !r.draft && (with_prereleases || !r.prerelease))
+        .filter(|r| {
+            !cfg!(target_os = "android")
+                || (installed.is_some() && crate::port_version::parse(&r.tag_name) == installed)
+        })
+        .take(if cfg!(target_os = "android") { 1 } else { usize::MAX })
         .map(|r| ReleaseNote {
             version: r.tag_name.trim_start_matches('v').to_string(),
             date: r
@@ -2652,6 +2661,67 @@ pub async fn release_notes() -> Result<Vec<ReleaseNote>, String> {
         })
         .collect();
     Ok(CACHE.get_or_init(|| notes).clone())
+}
+
+/// The Android port's version, for Settings > About: `release` is the APK's name
+/// (`1.4.0-rc.3-universal-android.2`), `running` the same with the architecture this copy runs
+/// as (`1.4.0-rc.3-arm64-v8a-android.2`).
+#[derive(serde::Serialize)]
+pub struct AndroidVersion {
+    release: String,
+    running: String,
+    abi: &'static str,
+}
+
+#[tauri::command]
+pub fn android_version() -> AndroidVersion {
+    AndroidVersion {
+        release: crate::port_version::release_name(),
+        running: crate::port_version::running_name(),
+        abi: crate::port_version::running_abi(),
+    }
+}
+
+/// A newer Android port release than this one, as GitHub's "Latest" release.
+#[derive(serde::Serialize)]
+pub struct AndroidUpdate {
+    /// The release's tag without its `v`.
+    version: String,
+    /// Its description, verbatim markdown: what the update brings, in the release's own words.
+    notes: String,
+}
+
+/// The Android update check, on every launch: the fork's release marked Latest (GitHub's own
+/// pointer, which skips drafts and pre-releases), compared with this build by version, not by
+/// string. `None` when it is not newer, or when its tag isn't a port version at all. An error for
+/// no network, GitHub down or a reply that isn't a release; the UI says nothing about those.
+#[tauri::command]
+pub async fn android_update_check() -> Result<Option<AndroidUpdate>, String> {
+    #[derive(serde::Deserialize)]
+    struct GhRelease {
+        tag_name: String,
+        body: Option<String>,
+    }
+    let latest: GhRelease = crate::http::client()
+        .get("https://api.github.com/repos/vajoexe/limusic-android/releases/latest")
+        .header("User-Agent", concat!("Limusic/", env!("CARGO_PKG_VERSION")))
+        .header("Accept", "application/vnd.github+json")
+        .timeout(std::time::Duration::from_secs(10))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?
+        .error_for_status()
+        .map_err(|e| e.to_string())?
+        .json()
+        .await
+        .map_err(|e| e.to_string())?;
+    if !crate::port_version::is_update(&latest.tag_name) {
+        return Ok(None);
+    }
+    Ok(Some(AndroidUpdate {
+        version: latest.tag_name.trim().trim_start_matches('v').to_string(),
+        notes: latest.body.unwrap_or_default(),
+    }))
 }
 
 /// Whether this build can install an update itself, or only point the user at the download.
