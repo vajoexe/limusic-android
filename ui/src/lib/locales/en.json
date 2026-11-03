@@ -430,6 +430,8 @@
 		"tabs": {
 			"general": "General",
 			"general_hint": "History, integrations and how the app starts.",
+			"startup": "Startup",
+			"startup_hint": "What Limusic does each time it opens.",
 			"discord": "Discord",
 			"discord_hint": "How your Rich Presence card looks.",
 			"scrobbling": "Scrobbling",
@@ -894,6 +896,15 @@
 				"practice": "Slower, in the same key",
 				"hall": "As if it were playing live"
 			},
+			"builtin_no_reverb": {
+				"slowed": "Slowed",
+				"nightcore": "Nightcore"
+			},
+			"builtin_hints_no_reverb": {
+				"slowed": "Slower and deeper",
+				"nightcore": "Faster and higher"
+			},
+			"reverb_unavailable": "Reverb isn't available in the Android version yet. The audio library it plays through is built without the filters reverb needs. Tempo and pitch work.",
 			"preset_save": "Save as preset",
 			"preset_save_hint": "Keep what you hear now for later",
 			"preset_save_none": "Change something below first",
@@ -1201,9 +1212,22 @@
 	},
 	"changelog": {
 		"version": "Version {version}",
-		"installed": "installed",
+		"installed": "Installed",
+		"available": "Available",
 		"no_releases": "No releases yet.",
-		"load_failed": "Couldn't load the changelog ({error})."
+		"load_failed": "Couldn't load the changelog ({error}).",
+		"load_failed_title": "Couldn't load the changelog",
+		"error": {
+			"rate_limited": "GitHub is limiting how often release notes can be fetched from your network. This usually clears up within the hour.",
+			"server": "GitHub is having trouble right now.",
+			"network": "Couldn't reach GitHub. Check your internet connection.",
+			"http": "GitHub turned the request down.",
+			"malformed": "GitHub sent back something Limusic couldn't read.",
+			"unknown": "Something went wrong while loading it."
+		},
+		"retry_in": "Trying again on its own in about {minutes} min.",
+		"retrying": "Retrying...",
+		"copy_hash": "Copy {label}"
 	},
 	"toasts": {
 		"could_not_play": "Could not play — try opening it instead",
@@ -1404,6 +1428,22 @@
 		"whats_new": "What's new",
 		"more": "And more on the release page.",
 		"no_notes": "See the release page for what it changes.",
-		"update": "Update"
+		"update": "Update",
+		"never": "Don't show again",
+		"status_title": "Updates",
+		"checking": "Checking GitHub for a newer release...",
+		"current": "You have the latest release, {version}.",
+		"available": "{version} is out. You have {installed}.",
+		"unchecked": "Not checked yet.",
+		"failed": "Couldn't check for updates. {reason}",
+		"check": "Check"
+	},
+	"startup": {
+		"section": "When Limusic opens",
+		"update_check": "Check for updates",
+		"update_check_hint": "Asks GitHub whether a newer release is out each time Limusic opens. Nothing is downloaded or installed.",
+		"update_popup": "Show a popup for new updates",
+		"update_popup_hint": "When a newer release is out, say so in a popup when Limusic opens. Off: it only shows in Settings > About.",
+		"update_popup_needs_check": "Needs Check for updates turned on."
 	}
 }

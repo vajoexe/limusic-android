@@ -10,6 +10,7 @@ mod commands;
 mod db;
 mod diagnostics;
 mod discord;
+mod github_api;
 // Desktop window/tray/webview machinery that Android compiles but never reaches.
 #[cfg_attr(mobile, allow(dead_code))]
 mod hotkeys;
@@ -400,7 +401,10 @@ fn init_logging(dir: &std::path::Path) {
     let file_layer = file.map(|f| {
         tracing_subscriber::fmt::layer().with_ansi(false).with_writer(f).with_filter(filter())
     });
-    // Android has no stdout anyone reads; the console copy goes to logcat instead.
+    // Android has no stdout anyone reads; the console copy goes to logcat instead. A release
+    // build sends logcat `info` and up only: logcat is the device's shared log, readable over adb
+    // and kept in bug reports, while the debug lines (track ids, stream hosts, per-request detail)
+    // are what the private log file and Copy diagnostics are for.
     #[cfg(not(target_os = "android"))]
     let console = tracing_subscriber::fmt::layer().with_filter(filter());
     #[cfg(target_os = "android")]
@@ -408,7 +412,11 @@ fn init_logging(dir: &std::path::Path) {
         .with_ansi(false)
         .without_time()
         .with_writer(android::Logcat)
-        .with_filter(filter());
+        .with_filter(if cfg!(debug_assertions) {
+            filter()
+        } else {
+            tracing_subscriber::EnvFilter::new("info")
+        });
     tracing_subscriber::registry().with(console).with(file_layer).init();
 }
 

@@ -520,9 +520,20 @@ export interface ReleaseNote {
 	/** `YYYY-MM-DD` */
 	date: string;
 	body: string;
+	/** The release running. Releases listed before it are newer. */
+	installed: boolean;
 }
-/** Changelog for Settings > About, from the GitHub releases API (cached in Rust per run). On
- *  Android, only the installed port release's own notes. */
+/** Why a GitHub API call failed (`github_api::FetchError`): what the command rejects with. No
+ *  response body, only the kind, the HTTP status when there was one, and how long GitHub asked to
+ *  wait. `unknown` is the frontend's own, for a rejection of any other shape. */
+export interface FetchError {
+	kind: 'rate_limited' | 'server' | 'http' | 'network' | 'malformed' | 'unknown';
+	status?: number;
+	retry_after_secs?: number | null;
+}
+/** Changelog for Settings > About, from the GitHub releases API (cached in Rust per run once it
+ *  loads). On Android, the installed port release and the newest one after it. Rejects with a
+ *  `FetchError`. */
 export const releaseNotes = () => invoke<ReleaseNote[]>('release_notes');
 /** The Android port's version (`port_version.rs`): `release` is the APK's name
  *  (`1.4.0-rc.3-universal-android.2`), `running` names the architecture this copy runs as

@@ -1,6 +1,7 @@
 <!--
-	Android: a newer release of the port is out (`checkForAndroidUpdate`, on every launch). A
-	centred modal over a dimmed app, closed by its X or a tap outside it, for the rest of this run.
+	Android: a newer release of the port is out (`checkForAndroidUpdate`, at startup). A centred
+	modal over a dimmed app, closed by its X or a tap outside it for the rest of this run, or by
+	"Don't show again" for good (Settings > Startup turns it back on).
 	What it says the update brings is the release's own notes, nothing else: the port can't know
 	what a release changed beyond what its description says.
 -->
@@ -8,7 +9,7 @@
 	import * as Dialog from '$lib/components/ui/dialog';
 	import { Button } from '$lib/components/ui/button';
 	import { parse, type Span } from './Changelog.svelte';
-	import { ANDROID_RELEASES_URL, port } from '$lib/androidPort.svelte';
+	import { ANDROID_RELEASES_URL, neverShowUpdatePopup, port } from '$lib/androidPort.svelte';
 	import { openExternal } from '$lib/api';
 	import { t } from '$lib/i18n.svelte';
 	import { toast } from '$lib/player.svelte';
@@ -32,10 +33,11 @@
 		return { shown, more: out.length > shown.length };
 	});
 
+	// Closing is the dismissal: it holds until the next launch checks again. The update itself
+	// stays listed in Settings > About.
 	let open = $state(true);
-	// Closing is the dismissal: it holds until the next launch checks again.
 	$effect(() => {
-		if (!open) port.update = null;
+		if (!open) port.popup = false;
 	});
 
 	function update() {
@@ -44,9 +46,35 @@
 		);
 		open = false;
 	}
+
+	function never() {
+		open = false;
+		neverShowUpdatePopup().catch((e) => toast.error(String(e)));
+	}
+
+	// The notes scroll inside the dialog. A hard cut through a line reads as "that's all", so the
+	// edge that has more beyond it fades out instead.
+	let notes = $state<HTMLElement>();
+	let more = $state({ above: false, below: false });
+	function edges() {
+		if (!notes) return;
+		const { scrollTop, scrollHeight, clientHeight } = notes;
+		more = { above: scrollTop > 1, below: scrollTop + clientHeight < scrollHeight - 1 };
+	}
+	$effect(() => {
+		if (!notes) return;
+		edges();
+		const ro = new ResizeObserver(edges);
+		ro.observe(notes);
+		return () => ro.disconnect();
+	});
+	const FADE = '1.5rem';
+	const mask = $derived(
+		`linear-gradient(to bottom, ${more.above ? 'transparent' : '#000'}, #000 ${FADE}, #000 calc(100% - ${FADE}), ${more.below ? 'transparent' : '#000'})`
+	);
 </script>
 
-{#if port.update}
+{#if port.popup && port.update}
 	<Dialog.Root bind:open>
 		<!-- Well short of the screen: the dimmed band above and below is where a tap outside closes
 		     it. The side gutters alone are too thin to hit on a phone. Inline, because the compact
@@ -54,7 +82,7 @@
 		     wins over a utility class. Only the notes scroll: the Update button stays in view. -->
 		<Dialog.Content
 			class="grid-rows-[auto_minmax(0,1fr)_auto]"
-			style="max-height: min(32rem, calc(100dvh - var(--inset-top, 0px) - var(--inset-bottom, 0px) - 10rem)); overflow: hidden"
+			style="max-height: min(40rem, calc(100dvh - var(--inset-top, 0px) - var(--inset-bottom, 0px) - 8rem)); overflow: hidden"
 		>
 			<Dialog.Header>
 				<Dialog.Title>{t('android_update.title')}</Dialog.Title>
@@ -66,7 +94,13 @@
 				</Dialog.Description>
 			</Dialog.Header>
 			{#if items.shown.length}
-				<div class="min-h-0 overflow-y-auto text-sm text-muted-foreground">
+				<div
+					bind:this={notes}
+					onscroll={edges}
+					class="min-h-0 overflow-y-auto overscroll-contain text-sm text-muted-foreground"
+					style:mask-image={mask}
+					style:-webkit-mask-image={mask}
+				>
 					<p class="font-medium text-foreground">{t('android_update.whats_new')}</p>
 					<ul class="mt-1.5 space-y-1">
 						{#each items.shown as item}
@@ -84,7 +118,8 @@
 			{:else}
 				<p class="text-sm text-muted-foreground">{t('android_update.no_notes')}</p>
 			{/if}
-			<Dialog.Footer>
+			<Dialog.Footer class="gap-2 sm:justify-between">
+				<Button variant="ghost" onclick={never}>{t('android_update.never')}</Button>
 				<Button onclick={update}>{t('android_update.update')}</Button>
 			</Dialog.Footer>
 		</Dialog.Content>

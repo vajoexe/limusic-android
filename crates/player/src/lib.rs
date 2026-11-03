@@ -790,12 +790,12 @@ impl Player {
             // Audible Reverb embeds a fixed tempo in lavfi; other speed updates retain stretch state.
             let result = if previous.semitones == semitones
                 && previous.reverb == reverb
-                && (semitones != 0 || (previous.speed == 1.0) == (speed == 1.0))
+                && speed_change_keeps_chain(semitones, previous.speed, speed)
                 && (!reverb.enabled || reverb.wet == 0 || previous.speed == speed)
             {
-                self.decks
-                    .mpv(deck)
-                    .map_or(Ok(()), |m| m.set_property("speed", speed).map_err(Error::from))
+                self.decks.mpv(deck).map_or(Ok(()), |m| {
+                    m.set_property("speed", mpv_speed(&wanted)).map_err(Error::from)
+                })
             } else {
                 apply_filters(&self.decks, deck, &wanted)
             };
@@ -903,8 +903,71 @@ fn apply_filters(decks: &Decks, deck: usize, af: &AudioFilters) -> Result<(), Er
             Error::Mpv(e)
         }
     })?;
-    mpv.set_property("speed", af.speed)?;
+    // Android stretches with mpv's own filters (see `af_chain`): its automatic pitch correction
+    // is what keeps the pitch at a tempo change, and it has to be off while a pitch shift resamples.
+    #[cfg(target_os = "android")]
+    mpv.set_property(
+        "audio-pitch-correction",
+        mpv_stretch(af.semitones, af.speed).pitch_correction,
+    )?;
+    mpv.set_property("speed", mpv_speed(af))?;
     Ok(())
+}
+
+/// Whether a tempo change can go straight to mpv's `speed`, keeping the filter chain as it is.
+/// Desktop: Rubber Band follows `speed` by itself once it is in the chain, so only adding or
+/// dropping it (leaving or reaching 1.0 while unpitched) needs a new chain. Android: an unpitched
+/// chain has no stretch filter at all, and a pitched one has the tempo written into it.
+fn speed_change_keeps_chain(semitones: i32, previous: f64, speed: f64) -> bool {
+    #[cfg(target_os = "android")]
+    {
+        let _ = (previous, speed);
+        semitones == 0
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        semitones != 0 || (previous == 1.0) == (speed == 1.0)
+    }
+}
+
+/// Semitones as a frequency multiplier (equal temperament).
+fn pitch_ratio(semitones: i32) -> f64 {
+    2f64.powf(f64::from(semitones) / 12.0)
+}
+
+/// Tempo and pitch with mpv's own filters only, for a libmpv without Rubber Band (Android's).
+/// See `af_chain` for how it works. Compiled everywhere so the numbers are tested on desktop.
+#[cfg_attr(not(any(test, target_os = "android")), allow(dead_code))]
+#[derive(Debug, PartialEq)]
+struct MpvStretch {
+    /// What goes in the filter chain, if anything.
+    chain: Option<String>,
+    /// mpv's `speed`.
+    speed: f64,
+    /// mpv's `audio-pitch-correction`.
+    pitch_correction: bool,
+}
+
+#[cfg_attr(not(any(test, target_os = "android")), allow(dead_code))]
+fn mpv_stretch(semitones: i32, speed: f64) -> MpvStretch {
+    if semitones == 0 {
+        return MpvStretch { chain: None, speed, pitch_correction: true };
+    }
+    let ratio = pitch_ratio(semitones);
+    MpvStretch {
+        chain: Some(format!("scaletempo=scale={}", speed / ratio)),
+        speed: ratio,
+        pitch_correction: false,
+    }
+}
+
+/// The value for mpv's `speed`: the tempo, except for a pitched Android chain (`mpv_stretch`).
+fn mpv_speed(af: &AudioFilters) -> f64 {
+    #[cfg(target_os = "android")]
+    if !(af.reverb.enabled && af.reverb.wet != 0) {
+        return mpv_stretch(af.semitones, af.speed).speed;
+    }
+    af.speed
 }
 
 /// The loudness gain is a lavfi `volume` (plus `alimiter` when it lifts), and every desktop libmpv
@@ -1057,14 +1120,25 @@ fn af_chain(gain_db: Option<f64>, semitones: i32, speed: f64) -> String {
         Some(g) => chain.push(format!("lavfi=[volume={g}dB]")),
         None => {}
     }
+    // Desktop: Rubber Band, for tempo and pitch both. Short windows reduce processing latency;
+    // shifted formants follow the pitch change.
+    #[cfg(not(target_os = "android"))]
     if semitones != 0 || speed != 1.0 {
-        // Semitones → frequency multiplier (equal temperament).
-        // Short windows reduce processing latency; shifted formants follow the pitch change.
         chain.push(format!(
             "{}=window=short:formant=shifted:pitch-scale={}",
             pitch_filter(),
-            2f64.powf(semitones as f64 / 12.0)
+            pitch_ratio(semitones)
         ));
+    }
+    // Android's libmpv has no Rubber Band, so mpv's own filters do it. A tempo change alone is
+    // mpv's automatic pitch correction (scaletempo2), with nothing in the chain. A pitch shift plays
+    // the track at the pitch ratio with that correction off (`mpv_speed`), which raises pitch and
+    // tempo together, and `scaletempo` stretches the tempo back by tempo ÷ pitch without touching
+    // the pitch. Measured with mpv 0.41: +3 semitones at 1.25× plays a 10 s 440 Hz tone as 8.0 s
+    // of 523 Hz. WSOLA rather than Rubber Band, so large shifts sound rougher than on desktop.
+    #[cfg(target_os = "android")]
+    if let Some(stretch) = mpv_stretch(semitones, speed).chain {
+        chain.push(stretch);
     }
     chain.join(",")
 }
@@ -1563,6 +1637,31 @@ mod transition_tests;
 
 #[cfg(test)]
 mod tests {
+    use super::{mpv_stretch, MpvStretch};
+
+    #[test]
+    fn mpv_only_stretch_keeps_tempo_and_pitch_apart() {
+        // Tempo alone: nothing in the chain, mpv's own pitch correction does it.
+        assert_eq!(
+            mpv_stretch(0, 1.25),
+            MpvStretch { chain: None, speed: 1.25, pitch_correction: true }
+        );
+        // +3 semitones at 1.25x: play at the pitch ratio, stretch the tempo back by tempo/pitch.
+        let up = mpv_stretch(3, 1.25);
+        assert!((up.speed - 1.189_207).abs() < 1e-6);
+        assert!(!up.pitch_correction);
+        let scale: f64 =
+            up.chain.unwrap().strip_prefix("scaletempo=scale=").unwrap().parse().unwrap();
+        assert!(
+            (up.speed * scale - 1.25).abs() < 1e-9,
+            "the tempo that comes out is the one asked for"
+        );
+        // An octave down at normal tempo.
+        let down = mpv_stretch(-12, 1.0);
+        assert!((down.speed - 0.5).abs() < 1e-12);
+        assert_eq!(down.chain.as_deref(), Some("scaletempo=scale=2"));
+    }
+
     fn reverb(preset: u8) -> super::Reverb {
         if preset == 0 {
             return super::Reverb::default();

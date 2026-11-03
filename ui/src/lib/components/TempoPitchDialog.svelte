@@ -29,8 +29,10 @@
 	import { playback, setTempoPitch } from '$lib/player.svelte';
 	import { t } from '$lib/i18n.svelte';
 	import {
-		BUILTIN_PRESETS,
+		AVAILABLE_PRESETS,
 		EFFECT_PRESETS_KEY,
+		REVERB_SUPPORTED,
+		playable,
 		ORIGINAL,
 		PRESET_NAME_MAX,
 		ROOMS,
@@ -95,17 +97,17 @@
 
 	const roomLocked = $derived(inRoom());
 	/** A preset as it plays here: a listening room keeps its shared clock at normal tempo. */
-	const here = (s: EffectSettings) => presetSettings(s, roomLocked);
-	const activeBuiltin = $derived(BUILTIN_PRESETS.find((p) => sameSound(view, here(p)))?.id ?? null);
+	const here = (s: EffectSettings) => presetSettings(playable(s), roomLocked);
+	const activeBuiltin = $derived(AVAILABLE_PRESETS.find((p) => sameSound(view, here(p)))?.id ?? null);
 	const activeSaved = $derived(presets.find((p) => sameSound(view, here(p)))?.name ?? null);
 	const nothingToSave = $derived(!!activeBuiltin || !!activeSaved);
 
 	function commit(next: EffectSettings) {
-		const settings = {
+		const settings = playable({
 			speed: roomLocked ? 1 : next.speed,
 			semitones: next.semitones,
 			reverb: { ...next.reverb }
-		};
+		});
 		pending = settings;
 		draft = {};
 		reverbDraft = {};
@@ -169,6 +171,17 @@
 	const deletePreset = (name: string) => persistPresets(presets.filter((p) => p.name !== name));
 
 	// --- wording ----------------------------------------------------------------------------------
+	/** Without reverb, "Slowed + reverb" and "with a touch of reverb" would say more than it does. */
+	const reworded = (id: BuiltinId): id is 'slowed' | 'nightcore' =>
+		!REVERB_SUPPORTED && (id === 'slowed' || id === 'nightcore');
+	const builtinLabel = (id: BuiltinId) =>
+		reworded(id)
+			? t(`dialogs.tempo_pitch.builtin_no_reverb.${id}`)
+			: t(`dialogs.tempo_pitch.builtin.${id}`);
+	const builtinHint = (id: BuiltinId) =>
+		reworded(id)
+			? t(`dialogs.tempo_pitch.builtin_hints_no_reverb.${id}`)
+			: t(`dialogs.tempo_pitch.builtin_hints.${id}`);
 	const signed = (n: number) => (n > 0 ? `+${n}` : n < 0 ? `−${-n}` : '0');
 	const roomName = (preset: number) => t(`dialogs.tempo_pitch.reverb_types.${ROOMS[preset - 1]}`);
 	/** What a saved preset does, in place of the description a built-in has. */
@@ -285,10 +298,10 @@
 			<h3 class={LABEL}>{t('dialogs.tempo_pitch.presets')}</h3>
 			<div class="mb-6">
 				<div class="grid grid-cols-3 gap-2">
-					{#each BUILTIN_PRESETS as preset (preset.id)}
+					{#each AVAILABLE_PRESETS as preset (preset.id)}
 						{@render card(
-							t(`dialogs.tempo_pitch.builtin.${preset.id}`),
-							t(`dialogs.tempo_pitch.builtin_hints.${preset.id}`),
+							builtinLabel(preset.id),
+							builtinHint(preset.id),
 							BUILTIN_ICONS[preset.id],
 							activeBuiltin === preset.id,
 							() => commit(here(preset))
@@ -429,6 +442,7 @@
 					{@render scale(t('dialogs.tempo_pitch.lower'), t('dialogs.tempo_pitch.higher'), 50)}
 				</div>
 
+				{#if REVERB_SUPPORTED}
 				<div class="px-4 py-4">
 					<div class="flex items-center justify-between gap-4">
 						<div class="min-w-0">
@@ -532,6 +546,11 @@
 						{/if}
 					{/if}
 				</div>
+				{:else}
+					<p class="px-4 py-4 text-xs leading-relaxed text-muted-foreground">
+						{t('dialogs.tempo_pitch.reverb_unavailable')}
+					</p>
+				{/if}
 			</div>
 		</div>
 

@@ -64,8 +64,11 @@ What works:
 
 What doesn't work, or works differently:
 
-- **Speed, pitch and reverb** are missing. The prebuilt libmpv this port uses
-  leaves out the audio filters they need.
+- **Speed and pitch** work, including pitch on its own, but sound a little
+  rougher than on the desktop. The prebuilt libmpv this port uses has no
+  Rubber Band, so time stretching uses mpv's built-in `scaletempo` instead.
+- **Reverb** is missing, and so are the presets that need it. That libmpv is
+  built without FFmpeg's audio filters, and reverb is made of them.
 - **Loudness normalization** only turns loud tracks down. Quiet tracks stay as
   they are, and there is no limiter. The desktop version does real
   normalization, so this is a weaker substitute.
@@ -102,9 +105,23 @@ and on 64-bit x86 (`x86_64`) devices such as emulators and some Chromebooks.
 Each time it starts, the app asks GitHub for this repository's latest release.
 If that release is newer than the installed one, it shows what changed and an
 **Update** button that opens the Releases page. Close it with the X or by
-tapping outside it, and it stays closed until the next start. Offline, or if
-GitHub can't be reached, the app starts as usual and says nothing. Nothing is
-downloaded or installed for you.
+tapping outside it, and it stays closed until the next start. **Don't show
+again** turns the popup off for good. Offline, or if GitHub can't be reached,
+the app starts as usual and says nothing. Nothing is downloaded or installed
+for you.
+
+Settings > Startup lists what the app does when it opens, each with its own
+switch: the update check, the update popup and resuming playback. Settings >
+About always shows whether an update is out. If the app hasn't asked GitHub yet
+in this session, because the startup check is off or failed, it asks when
+Settings opens.
+
+The changelog in Settings > About comes from GitHub's API, which allows 60
+requests an hour per network without signing in. If GitHub says no, the
+changelog shows the HTTP status and why, and has a **Retry** button. Rate
+limits and server errors are retried on their own, at most about once a minute
+and never before GitHub's own `Retry-After` or reset time. Errors that won't go
+away by waiting, such as a 404, are not retried.
 
 Versions look like `1.4.0-rc.3-universal-android.2`: the upstream Limusic
 version it is built on, then the port's own revision. Settings > About shows the
@@ -134,38 +151,66 @@ fingerprint is different, the APK did not come from this repository.
 
 ## Building
 
-You'll need:
-
-- The Android SDK with `platforms;android-37.0`, `build-tools;37.0.0`,
-  `ndk;28.2.13676358` and `platform-tools`
-- JDK 17
-- Rust with the `aarch64-linux-android` and `x86_64-linux-android` targets
-- The Tauri CLI: `cargo install tauri-cli --version '^2'`
-- Node.js and pnpm 10
-
-Then:
+Everything goes through one script:
 
 ```sh
-export ANDROID_HOME=/path/to/android-sdk
-source scripts/android/env.sh          # sets up the NDK, bindgen and JAVA_HOME
-scripts/android/fetch-libmpv.sh        # downloads libmpv, checks its SHA-256
-(cd ui && pnpm install --frozen-lockfile)
-
-# Debug build for the emulator
-cargo tauri android build --debug --target x86_64 --apk
-
-# Debug build for both architectures, like the release
-cargo tauri android build --debug --target aarch64 --target x86_64 --apk
-
-# Signed release build for phones (see Release signing below)
-scripts/android/build-release.sh
+scripts/build.sh            # menu on a terminal; Android release after 10 s
+scripts/build.sh --android  # signed universal release APK (the default)
+scripts/build.sh --android --debug   # debug APK for the emulator, no key needed
+scripts/build.sh --linux    # Linux desktop binary
+scripts/build.sh --check    # check the toolchain and the key, build nothing
+scripts/build.sh --help     # every option
 ```
 
-The APKs end up in `src-tauri/gen/android/app/build/outputs/apk/`.
-`build-release.sh` builds one universal APK with both `arm64-v8a` and `x86_64`
-libraries and lists the libraries it packed, per architecture, after signing.
-A release build made with plain `cargo tauri android build --apk`, with no
-signing key set up, comes out unsigned.
+Run with no target on a terminal, it shows a menu and picks the Android release
+when the countdown runs out (`--timeout SECS` or `LIMUSIC_BUILD_MENU_TIMEOUT`,
+0 skips the menu). Without a terminal, in CI or a pipe, it builds Android
+straight away and never waits for input.
+
+What it does, in order:
+
+1. **Checks the toolchain** for the target against the requirements written at
+   the top of the script, and lists every mismatch with what is needed next to
+   what it found. For Android: Rust 1.80 or newer with the `aarch64-linux-android`
+   and `x86_64-linux-android` targets, Tauri CLI 2, Node.js 20.19 or 22.12+,
+   pnpm 10, JDK 17 or 21, libclang, and the SDK's `platforms;android-37.0`,
+   `build-tools;37.0.0`, `ndk;28.2.13676358` and `platform-tools`. For Linux,
+   the development files of mpv, WebKitGTK 4.1, GTK 3, OpenSSL and librsvg.
+2. **Offers to install** what is missing, after you answer y. It installs only
+   the listed pieces: `rustup target add`, `cargo install tauri-cli`,
+   `sdkmanager` for SDK packages, and `sudo pacman -S --needed` for system
+   packages on Arch-based systems such as CachyOS. Elsewhere it prints what to
+   install and stops. Answer no and it stops without changing anything. After
+   installing it checks again and stops if anything is still wrong.
+3. **Finds the signing key** (release builds only, see below).
+4. **Asks for the key's password**, after the checks, so a long build never
+   starts with a wrong one. A wrong password says so and asks whether to try
+   again, as often as you like.
+5. **Prepares the build**: sets up the SDK, NDK and JDK through
+   `scripts/android/env.sh`, installs the UI dependencies only when
+   `pnpm-lock.yaml` changed, and fetches libmpv only when the unpacked copy
+   doesn't match the version and SHA-256 pinned in
+   `scripts/android/fetch-libmpv.sh`.
+6. **Builds and checks the APK**: `apksigner` verification, the signing
+   certificate against your key's, an ELF check that `libapp_lib.so` and
+   `libmpv.so` are there and built for each architecture, the version Gradle
+   wrote into it, a size breakdown compared with the previous build, and the
+   SHA-256.
+7. **Cleans up** only things that can be rebuilt: Gradle's duplicate
+   `app-universal-release.apk` once the named copy is verified identical, an
+   old unsigned release APK, and build logs beyond the newest ten. It never
+   touches the new APK, earlier releases, the keystore, your data or the
+   source. It ends with a summary of the version, architectures, signature,
+   size, time taken, artifact path and SHA-256.
+
+The release APK is
+`src-tauri/gen/android/app/build/outputs/apk/universal/release/limusic-<version>.apk`.
+Debug builds land in `.../apk/universal/debug/`. Each run writes a log to
+`target/build-logs/`, and a failed run says which step failed and keeps its log.
+
+Optional local settings go in `~/.config/limusic/build.conf`, outside the
+repository, as `KEY=value` lines: `ANDROID_HOME`, `MENU_TIMEOUT` and
+`APK_BUDGET_MB`. The script reads them as plain values and never runs the file.
 
 The version is set in one place. The upstream part is the Cargo workspace
 version. The port's revision is `revision` in
@@ -180,10 +225,27 @@ check only looks at the latest release. Settings > About shows the notes of the
 release whose tag matches the installed version, so a tag in any other format
 leaves both of them blank.
 
-Debug builds are big because the Rust library keeps its debug symbols: about
-500 MB for one architecture and 1.5 GB for both. Release builds are much
-smaller; the universal one is larger than a single-architecture build because
-it carries both sets of libraries.
+### APK size
+
+The universal release APK is about 197 MB. Release android.1 was about 96 MB
+because it carried only `arm64-v8a`. Android.2 added `x86_64`, and the APK
+doubled; nothing else grew. Native libraries are stored uncompressed, as Android
+prefers, so the APK is roughly the sum of both architectures' libraries:
+
+| Part | Size |
+| --- | --- |
+| `lib/arm64-v8a` | 98 MB |
+| `lib/x86_64` | 106 MB |
+| Java code and resources | 2 MB |
+
+Most of each architecture is `libapp_lib.so`, the Rust core (about 74 MB), and
+most of that is the IPADIC Japanese dictionary used to romanize lyrics (47 MB).
+The libraries are already stripped. libmpv and FFmpeg add about 25 MB per
+architecture. A phone only installs its own architecture's libraries, so the
+installed size is about half the download.
+
+The build script warns when a release APK grows more than 5% over the previous
+build, or past `APK_BUDGET_MB` (230 by default).
 
 ### Release signing
 
@@ -198,36 +260,59 @@ the same key. So every release has to be signed with the same private key, for
 as long as the app exists. If the key is lost, people have to uninstall the app,
 and lose its data, before they can install a build signed with a new key.
 
-To set up a key, once:
+`scripts/build.sh` looks for the key in `src-tauri/gen/android/keystore.properties`
+(gitignored, holding only the keystore path and the key alias) or in
+`LIMUSIC_ANDROID_STORE_FILE` and `LIMUSIC_ANDROID_KEY_ALIAS`. It never creates,
+moves or replaces a key on its own:
 
-```sh
-scripts/android/make-release-key.sh
-```
+- If a keystore exists at `~/.local/share/limusic/release.jks` but nothing
+  points to it, it offers to write `keystore.properties` for it.
+- If the configured keystore is missing, for example on an unmounted disk, it
+  stops. A new key would not be a replacement.
+- If there is no key at all, it explains why one is needed and, after two
+  confirmations, runs `scripts/android/make-release-key.sh`. That creates an
+  RSA 4096 key valid for 50 years. keytool asks you to choose the password, so
+  pick one you will remember. `make-release-key.sh` refuses to run if a keystore
+  already exists, and refuses to put one inside the repository.
+  `LIMUSIC_RELEASE_KEYSTORE`, `LIMUSIC_RELEASE_ALIAS` and `LIMUSIC_RELEASE_DNAME`
+  change its defaults.
 
-It asks for a password and creates `~/.local/share/limusic/release.jks`, an RSA
-4096 key valid for 50 years. It also writes
-`src-tauri/gen/android/keystore.properties`, which holds only the keystore path
-and the key alias. If a keystore already exists there, the script stops instead
-of replacing it. `LIMUSIC_RELEASE_KEYSTORE`, `LIMUSIC_RELEASE_ALIAS` and
-`LIMUSIC_RELEASE_DNAME` change the defaults.
-
-To build a signed release:
-
-```sh
-scripts/android/build-release.sh
-```
-
-It asks for the keystore password, passes it to Gradle through the environment
-for that one build, and checks the result with `apksigner`. The password is not
-written to any file. In CI, set `LIMUSIC_ANDROID_STORE_FILE`,
-`LIMUSIC_ANDROID_KEY_ALIAS`, `LIMUSIC_ANDROID_STORE_PASSWORD` and
-`LIMUSIC_ANDROID_KEY_PASSWORD` from the CI's secret store instead.
+The password is read from the terminal with echo off and passed to keytool and
+Gradle through the environment for that one build. It never appears in
+arguments, files, the log or shell history. Gradle's configuration cache is off
+for the build and its daemon is stopped afterwards. In CI, set
+`LIMUSIC_ANDROID_STORE_FILE`, `LIMUSIC_ANDROID_KEY_ALIAS`,
+`LIMUSIC_ANDROID_STORE_PASSWORD` and `LIMUSIC_ANDROID_KEY_PASSWORD` from the CI's
+secret store instead. `scripts/android/build-release.sh` still works for a
+release build without the checks.
 
 Keep the keystore out of the repository. `*.jks`, `*.keystore`, `*.p12` and
 `keystore.properties` are gitignored as a safety net. Back up the keystore and
 its password somewhere other than the build machine: for example the `.jks` file
 attached to an entry in an encrypted password manager, plus an offline copy on
 a USB drive kept apart from the password.
+
+### Optional: a KDE launcher
+
+This part is local to your machine and not in the repository. To start a build
+from the application launcher, create
+`~/.local/share/applications/limusic-build-android.desktop` with your own
+checkout's path in place of `/path/to/limusic-android`:
+
+```ini
+[Desktop Entry]
+Type=Application
+Name=Build Android APK
+Comment=Build the signed Limusic Android release APK in a terminal
+Icon=/path/to/limusic-android/src-tauri/icons/128x128@2x.png
+Exec=konsole --hold --workdir /path/to/limusic-android -e /path/to/limusic-android/scripts/build.sh --android
+Terminal=false
+Categories=Development;
+```
+
+Then run `kbuildsycoca6` so Plasma picks it up. `--hold` keeps the Konsole window
+open after the build so you can read the summary. A launcher doesn't load your
+shell's profile, so put `ANDROID_HOME` in `~/.config/limusic/build.conf`.
 
 Last.fm scrobbling needs your own API key, the same as the desktop app. Put it
 in `src-tauri/lastfm.keys`:

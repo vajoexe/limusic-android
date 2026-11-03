@@ -627,9 +627,17 @@ impl Db {
 
     /// Delete a saved account row. Whether removing it signs the app out is the caller's decision
     /// (see `AppState::remove_google_account`), not this row's.
+    ///
+    /// The row holds the account's session cookie, so it is deleted for real: `secure_delete`
+    /// zeroes the freed space instead of leaving the old bytes in the file until something reuses
+    /// it, and the checkpoint folds the WAL (which holds copies of the page from before the
+    /// delete) back in and empties it. Only for this delete; the caches' deletes don't need it.
     pub fn remove_account(&self, id: &str) {
         let conn = self.0.lock().unwrap();
+        let _ = conn.pragma_update(None, "secure_delete", true);
         let _ = conn.execute("DELETE FROM accounts WHERE id = ?1", [id]);
+        let _ = conn.pragma_update(None, "secure_delete", false);
+        let _ = conn.query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |_| Ok(()));
     }
 
     /// Write a saved account's fields into the active-account `settings` projections and flip the
@@ -1691,6 +1699,45 @@ mod tests {
             rows.iter().map(|r| r.1.clone()).collect::<Vec<_>>(),
             vec![song("t1").1, song("t2").1, song("t3").1]
         );
+    }
+
+    #[test]
+    fn a_removed_account_leaves_no_cookie_on_disk() {
+        let path = std::env::temp_dir().join("limusic-remove-account-test.sqlite");
+        let wal = path.with_extension("sqlite-wal");
+        for p in [&path, &wal] {
+            std::fs::remove_file(p).ok();
+        }
+        let d = Db::open(&path).unwrap();
+        const SECRET: &str = "ZZsecret-cookie-value-that-must-not-survive-1234567890ZZ";
+        d.upsert_account(&StoredAccount {
+            id: "ga-test".into(),
+            session_cookie: format!("SAPISID={SECRET}; SID={SECRET}"),
+            data_sync_id: None,
+            selected_identity_json: None,
+            account_json: None,
+            visitor_data: None,
+            added_at: 1,
+        })
+        .unwrap();
+        // Make sure the row really reached the main file before it is deleted, the way it would
+        // have long before anyone removes the account.
+        d.0.lock().unwrap().query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |_| Ok(())).unwrap();
+        let on_disk = |p: &std::path::Path| {
+            std::fs::read(p)
+                .unwrap_or_default()
+                .windows(SECRET.len())
+                .any(|w| w == SECRET.as_bytes())
+        };
+        assert!(on_disk(&path), "the cookie is on disk before the removal");
+        d.remove_account("ga-test");
+        assert!(d.list_accounts().is_empty());
+        assert!(!on_disk(&path), "the cookie is still in the database file");
+        assert!(!on_disk(&wal), "the cookie is still in the WAL");
+        drop(d);
+        for p in [&path, &wal] {
+            std::fs::remove_file(p).ok();
+        }
     }
 
     #[test]

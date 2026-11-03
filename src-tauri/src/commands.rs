@@ -249,7 +249,7 @@ pub async fn get_queue(state: St<'_>) -> Result<serde_json::Value, String> {
 /// `visitor_data`) and internal blobs (`queue_json`, `queue_index`, `queue_position`) never cross
 /// into the webview: they'd otherwise ship the login credential to the renderer on every open, and
 /// the webview can't overwrite them either.
-const UI_SETTINGS: [&str; 33] = [
+const UI_SETTINGS: [&str; 35] = [
     "volume",
     "proxy",
     "quality",
@@ -283,6 +283,9 @@ const UI_SETTINGS: [&str; 33] = [
     "crossfade",
     "crossfade_secs",
     "locale",
+    // Settings > Startup on Android: the update check at launch, and its popup.
+    "android_update_check",
+    "android_update_popup",
 ];
 
 /// Resolve the music video for `video_id` and hand back a `limusicvideo://` URL the player view
@@ -2600,67 +2603,84 @@ pub struct ReleaseNote {
     date: String,
     /// The release description, verbatim markdown. The About tab renders it.
     body: String,
+    /// This is the release running. Releases listed before it are newer.
+    installed: bool,
+}
+
+#[derive(serde::Deserialize)]
+struct GhRelease {
+    tag_name: String,
+    published_at: Option<String>,
+    body: Option<String>,
+    #[serde(default)]
+    draft: bool,
+    #[serde(default)]
+    prerelease: bool,
 }
 
 /// What's new, read straight from the GitHub releases API so the release description is the only
-/// place the changelog is written. Cached for the process: the list only changes when a release
-/// is cut, and unauthenticated GitHub allows 60 requests an hour.
+/// place the changelog is written. Cached for the process once it has loaded: the list only
+/// changes when a release is cut, and unauthenticated GitHub allows 60 requests an hour. A failure
+/// is not cached; the UI says what went wrong and tries again (`github_api::FetchError`).
 #[tauri::command]
-pub async fn release_notes() -> Result<Vec<ReleaseNote>, String> {
+pub async fn release_notes() -> Result<Vec<ReleaseNote>, crate::github_api::FetchError> {
     static CACHE: std::sync::OnceLock<Vec<ReleaseNote>> = std::sync::OnceLock::new();
     if let Some(cached) = CACHE.get() {
         return Ok(cached.clone());
     }
-    #[derive(serde::Deserialize)]
-    struct GhRelease {
-        tag_name: String,
-        published_at: Option<String>,
-        body: Option<String>,
-        draft: bool,
-        prerelease: bool,
-    }
-    // The Android port is released from its own repository, and its versions are all built on an
-    // upstream release candidate, so they go out as pre-releases and count here.
-    let (repo, with_prereleases) = if cfg!(target_os = "android") {
-        ("vajoexe/limusic-android", true)
-    } else {
-        ("SimoHypers/limusic", false)
-    };
-    let releases: Vec<GhRelease> = crate::http::client()
-        .get(format!("https://api.github.com/repos/{repo}/releases?per_page=20"))
-        .header("User-Agent", concat!("Limusic/", env!("CARGO_PKG_VERSION")))
-        .header("Accept", "application/vnd.github+json")
-        .timeout(std::time::Duration::from_secs(15))
-        .send()
-        .await
-        .map_err(|e| e.to_string())?
-        .error_for_status()
-        .map_err(|e| e.to_string())?
-        .json()
-        .await
-        .map_err(|e| e.to_string())?;
-    // The Android port shows the notes of the release installed and nothing else: the upstream
-    // history describes the desktop app, and the port's earlier revisions are behind the user. A
-    // build with no published release (a local build) has none to show.
-    let installed = crate::port_version::installed();
-    let notes: Vec<ReleaseNote> = releases
-        .into_iter()
-        .filter(|r| !r.draft && (with_prereleases || !r.prerelease))
-        .filter(|r| {
-            !cfg!(target_os = "android")
-                || (installed.is_some() && crate::port_version::parse(&r.tag_name) == installed)
-        })
-        .take(if cfg!(target_os = "android") { 1 } else { usize::MAX })
-        .map(|r| ReleaseNote {
-            version: r.tag_name.trim_start_matches('v').to_string(),
-            date: r
-                .published_at
-                .and_then(|d| d.split('T').next().map(str::to_string))
-                .unwrap_or_default(),
-            body: r.body.unwrap_or_default(),
-        })
-        .collect();
+    let repo =
+        if cfg!(target_os = "android") { "vajoexe/limusic-android" } else { "SimoHypers/limusic" };
+    let releases: Vec<GhRelease> = crate::github_api::get_json(
+        &format!("/repos/{repo}/releases?per_page=20"),
+        std::time::Duration::from_secs(15),
+    )
+    .await?;
+    let notes = select_release_notes(releases, cfg!(target_os = "android"));
     Ok(CACHE.get_or_init(|| notes).clone())
+}
+
+/// Which releases the About tab lists, newest first.
+///
+/// The desktop app lists its own releases, pre-releases left out. The Android port lists the
+/// release installed and, when one is out, the newest release after it, and nothing else: the
+/// upstream history describes the desktop app, and the port's earlier revisions are behind the
+/// user. Its versions are all built on an upstream release candidate, so they can be published as
+/// pre-releases and still count. A build with no published release (a local build) shows only a
+/// newer one, if any.
+fn select_release_notes(releases: Vec<GhRelease>, android: bool) -> Vec<ReleaseNote> {
+    let note = |r: GhRelease, installed: bool| ReleaseNote {
+        version: r.tag_name.trim().trim_start_matches('v').to_string(),
+        date: r
+            .published_at
+            .and_then(|d| d.split('T').next().map(str::to_string))
+            .unwrap_or_default(),
+        body: r.body.unwrap_or_default(),
+        installed,
+    };
+    let published = releases.into_iter().filter(|r| !r.draft);
+    if !android {
+        return published
+            .filter(|r| !r.prerelease)
+            .map(|r| {
+                let installed =
+                    r.tag_name.trim().trim_start_matches('v') == env!("CARGO_PKG_VERSION");
+                note(r, installed)
+            })
+            .collect();
+    }
+    let Some(me) = crate::port_version::installed() else { return Vec::new() };
+    let mut newest: Option<(crate::port_version::PortVersion, GhRelease)> = None;
+    let mut mine = None;
+    for r in published {
+        match crate::port_version::parse(&r.tag_name) {
+            Some(v) if v == me && mine.is_none() => mine = Some(r),
+            Some(v) if v > me && newest.as_ref().map_or(true, |(n, _)| v > *n) => {
+                newest = Some((v, r))
+            }
+            _ => {}
+        }
+    }
+    newest.map(|(_, r)| note(r, false)).into_iter().chain(mine.map(|r| note(r, true))).collect()
 }
 
 /// The Android port's version, for Settings > About: `release` is the APK's name
@@ -2696,25 +2716,13 @@ pub struct AndroidUpdate {
 /// string. `None` when it is not newer, or when its tag isn't a port version at all. An error for
 /// no network, GitHub down or a reply that isn't a release; the UI says nothing about those.
 #[tauri::command]
-pub async fn android_update_check() -> Result<Option<AndroidUpdate>, String> {
-    #[derive(serde::Deserialize)]
-    struct GhRelease {
-        tag_name: String,
-        body: Option<String>,
-    }
-    let latest: GhRelease = crate::http::client()
-        .get("https://api.github.com/repos/vajoexe/limusic-android/releases/latest")
-        .header("User-Agent", concat!("Limusic/", env!("CARGO_PKG_VERSION")))
-        .header("Accept", "application/vnd.github+json")
-        .timeout(std::time::Duration::from_secs(10))
-        .send()
-        .await
-        .map_err(|e| e.to_string())?
-        .error_for_status()
-        .map_err(|e| e.to_string())?
-        .json()
-        .await
-        .map_err(|e| e.to_string())?;
+pub async fn android_update_check() -> Result<Option<AndroidUpdate>, crate::github_api::FetchError>
+{
+    let latest: GhRelease = crate::github_api::get_json(
+        "/repos/vajoexe/limusic-android/releases/latest",
+        std::time::Duration::from_secs(10),
+    )
+    .await?;
     if !crate::port_version::is_update(&latest.tag_name) {
         return Ok(None);
     }
@@ -3068,6 +3076,70 @@ pub fn stop_matugen_watcher() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn gh(tag: &str, prerelease: bool) -> GhRelease {
+        GhRelease {
+            tag_name: tag.into(),
+            published_at: Some("2026-11-02T21:14:57Z".into()),
+            body: Some(format!("notes for {tag}")),
+            draft: false,
+            prerelease,
+        }
+    }
+
+    /// The installed port revision, read back through the public parser.
+    fn my_revision() -> u32 {
+        let name = crate::port_version::release_name();
+        assert_eq!(crate::port_version::parse(&name), crate::port_version::installed());
+        name.rsplit_once("-android.").unwrap().1.parse().unwrap()
+    }
+
+    #[test]
+    fn android_lists_the_installed_release_and_the_newest_after_it() {
+        let up = env!("CARGO_PKG_VERSION");
+        let rev = |n: u32| format!("v{up}-android.{n}");
+        let r = my_revision();
+        // GitHub's order is by creation, not version: the newest must be picked by version.
+        let list = vec![
+            gh(&rev(r + 1), false),
+            gh(&rev(r + 2), true),
+            gh(&rev(r), false),
+            gh("v0.9.0-android.1", false),
+            gh("v0.9.0", false),
+        ];
+        let notes = select_release_notes(list, true);
+        let got: Vec<_> = notes.iter().map(|n| (n.version.clone(), n.installed)).collect();
+        assert_eq!(
+            got,
+            vec![(format!("{up}-android.{}", r + 2), false), (format!("{up}-android.{r}"), true)]
+        );
+        assert_eq!(notes[1].date, "2026-11-02");
+    }
+
+    #[test]
+    fn android_without_a_newer_release_lists_just_its_own() {
+        let up = env!("CARGO_PKG_VERSION");
+        let r = my_revision();
+        let notes =
+            select_release_notes(vec![gh(&format!("v{up}-universal-android.{r}"), false)], true);
+        assert_eq!(notes.len(), 1);
+        assert!(notes[0].installed);
+        // A local build nobody published: nothing of its own, nothing newer.
+        assert!(select_release_notes(vec![gh("v0.1.0-android.1", false)], true).is_empty());
+    }
+
+    #[test]
+    fn desktop_lists_its_releases_and_marks_the_running_one() {
+        let up = env!("CARGO_PKG_VERSION");
+        let mut draft = gh("v9.9.9", false);
+        draft.draft = true;
+        let notes = select_release_notes(
+            vec![draft, gh("v9.0.0-rc.1", true), gh(&format!("v{up}"), false), gh("v1.0.0", false)],
+            false,
+        );
+        let got: Vec<_> = notes.iter().map(|n| (n.version.as_str(), n.installed)).collect();
+        assert_eq!(got, vec![(up, true), ("1.0.0", false)]);
+    }
 
     #[test]
     fn on_repeat_rows_shed_the_queue_slot_they_were_played_from() {

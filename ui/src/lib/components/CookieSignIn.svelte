@@ -11,7 +11,7 @@
 	import * as Dialog from '$lib/components/ui/dialog';
 	import { Button } from '$lib/components/ui/button';
 	import { Textarea } from '$lib/components/ui/textarea';
-	import { readText } from '@tauri-apps/plugin-clipboard-manager';
+	import { readText, writeText } from '@tauri-apps/plugin-clipboard-manager';
 	import * as api from '$lib/api';
 	import { platform } from '$lib/platform.svelte';
 	import { toast } from '$lib/player.svelte';
@@ -39,9 +39,13 @@
 		}
 	}
 
+	/** What the Paste button put in the field, to empty the clipboard of it after a sign-in. */
+	let pasted = '';
+
 	async function paste() {
 		try {
 			cookie = (await readText()) ?? '';
+			pasted = cookie;
 		} catch {
 			// No clipboard permission or nothing in it: the field's own long-press paste still works.
 		}
@@ -55,6 +59,11 @@
 		try {
 			// `true` means a channel has to be picked; Rust raises the picker itself.
 			const picking = await api.signInCookie(cookie);
+			// The session is in Limusic now: don't leave a copy on the clipboard, where the keyboard's
+			// clipboard history and any app reading it would see it. Only when the field still holds
+			// exactly what the Paste button read, so nothing else the user copied is touched.
+			if (pasted && cookie === pasted) writeText('').catch(() => {});
+			pasted = '';
 			platform.signInOpen = false;
 			if (!picking) toast.success(t('toasts.signed_in'));
 		} catch (err) {

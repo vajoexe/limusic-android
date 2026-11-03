@@ -17,7 +17,9 @@
 		Globe02Icon,
 		ArrowDown01Icon,
 		Alert02Icon,
-		LinkSquare02Icon
+		LinkSquare02Icon,
+		Rocket01Icon,
+		RefreshIcon
 	} from '@hugeicons/core-free-icons';
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
@@ -50,10 +52,20 @@
 	import LyricsSourcesSettings from '$lib/components/LyricsSourcesSettings.svelte';
 	import LanguagePicker from '$lib/components/LanguagePicker.svelte';
 	import { isAndroid, platform } from '$lib/platform.svelte';
-	import { ANDROID_ISSUES_URL, loadAndroidVersion, port } from '$lib/androidPort.svelte';
+	import {
+		ANDROID_ISSUES_URL,
+		ANDROID_RELEASES_URL,
+		UPDATE_CHECK_SETTING,
+		UPDATE_POPUP_SETTING,
+		ensureAndroidUpdateInfo,
+		loadAndroidVersion,
+		port,
+		retryAndroidUpdateCheck
+	} from '$lib/androidPort.svelte';
 
 	type TabId =
 		| 'general'
+		| 'startup'
 		| 'themes'
 		| 'playback'
 		| 'hotkeys'
@@ -64,6 +76,7 @@
 	type Tab = { id: TabId; label: string; hint: string; icon: typeof Settings02Icon };
 	const TABS = $derived<Tab[]>(([
 		{ id: 'general', label: t('settings.tabs.general'), hint: t('settings.tabs.general_hint'), icon: Settings02Icon },
+		{ id: 'startup', label: t('settings.tabs.startup'), hint: t('settings.tabs.startup_hint'), icon: Rocket01Icon },
 		{ id: 'themes', label: t('settings.tabs.themes'), hint: t('settings.tabs.themes_hint'), icon: PaintBoardIcon },
 		{ id: 'playback', label: t('settings.tabs.playback'), hint: t('settings.tabs.playback_hint'), icon: PlayCircleIcon },
 		{ id: 'hotkeys', label: t('settings.tabs.hotkeys'), hint: t('settings.tabs.hotkeys_hint'), icon: KeyboardIcon },
@@ -73,7 +86,10 @@
 		{ id: 'about', label: t('settings.tabs.about'), hint: t('settings.tabs.about_hint'), icon: InformationCircleIcon }
 		// Android has neither system-wide hotkeys nor a Discord client to talk to (hotkeys.rs,
 		// discord.rs), so those tabs would only ever say so.
-	] satisfies Tab[]).filter((tb) => !isAndroid || (tb.id !== 'hotkeys' && tb.id !== 'discord')));
+	] satisfies Tab[]).filter((tb) =>
+		// Startup is the Android port's: the desktop keeps its startup switches under General.
+		isAndroid ? tb.id !== 'hotkeys' && tb.id !== 'discord' : tb.id !== 'startup'
+	));
 
 	// Shared shapes for the settings rows. Kept as strings so the markup below stays readable and
 	// every group looks identical without a wrapper component per row.
@@ -146,6 +162,9 @@
 			} else {
 				load();
 			}
+			// No answer about updates yet this run (the startup check was off, offline or refused):
+			// ask now, in the background, for Settings > About.
+			if (isAndroid) ensureAndroidUpdateInfo();
 			updateResult = null;
 		});
 	});
@@ -267,6 +286,36 @@
 	const trackNotificationsOn = $derived(settings.track_notifications === 'true');
 	const trackNotificationsFocusedOn = $derived(settings.track_notifications_focused === 'true');
 	const playOnStartOn = $derived(settings.play_on_start === 'true');
+	const androidUpdateText = $derived.by(() => {
+		const installed = port.version?.release ?? '';
+		switch (port.status) {
+			case 'checking':
+				return t('android_update.checking');
+			case 'current':
+				return t('android_update.current', { version: installed });
+			case 'available':
+				return t('android_update.available', { version: port.update?.version ?? '', installed });
+			case 'failed': {
+				const e = port.error;
+				const code = e?.status ? ` (HTTP ${e.status})` : '';
+				return t('android_update.failed', { reason: t(`changelog.error.${e?.kind ?? 'unknown'}`) + code });
+			}
+			default:
+				return t('android_update.unchecked');
+		}
+	});
+	const updateCheckOn = $derived(settings[UPDATE_CHECK_SETTING] !== 'false');
+	const updatePopupOn = $derived(settings[UPDATE_POPUP_SETTING] !== 'false');
+	async function setStartupSwitch(key: string, on: boolean) {
+		const before = settings[key];
+		settings[key] = on ? 'true' : 'false';
+		try {
+			await api.setSetting(key, settings[key]);
+		} catch (e) {
+			settings[key] = before;
+			toast.error(String(e));
+		}
+	}
 	const autostartOn = $derived(settings.autostart === 'true');
 	const startMinimizedOn = $derived(settings.start_minimized === 'true');
 	// `native_chrome` is read-only and platform-derived (commands.rs). `overlay` is macOS, where the
@@ -640,12 +689,12 @@
 										control: trackNotificationsFocusedSwitch
 									})}
 								{/if}
+								{#if !isAndroid}
 								{@render row({
 									title: t('settings.general.play_on_start'),
 									desc: t('settings.general.play_on_start_hint'),
 									control: playOnStartSwitch
 								})}
-								{#if !isAndroid}
 								{@render row({
 									title: t('settings.general.autostart'),
 									desc: t('settings.general.autostart_hint'),
@@ -666,6 +715,29 @@
 										control: systemTitlebarSwitch
 									})}
 								{/if}
+							</div>
+						</section>
+					{:else if tab === 'startup'}
+						<section class={GROUP}>
+							<h3 class={LABEL}>{t('startup.section')}</h3>
+							<div class={CARD}>
+								{@render row({
+									title: t('startup.update_check'),
+									desc: t('startup.update_check_hint'),
+									control: updateCheckSwitch
+								})}
+								{@render row({
+									title: t('startup.update_popup'),
+									desc: updateCheckOn
+										? t('startup.update_popup_hint')
+										: `${t('startup.update_popup_hint')} ${t('startup.update_popup_needs_check')}`,
+									control: updatePopupSwitch
+								})}
+								{@render row({
+									title: t('settings.general.play_on_start'),
+									desc: t('settings.general.play_on_start_hint'),
+									control: playOnStartSwitch
+								})}
 							</div>
 						</section>
 					{:else if tab === 'playback'}
@@ -842,8 +914,21 @@
 							</div>
 						</section>
 
-						<!-- The updater isn't wired on Android (+layout.svelte): an APK updates by
-						     installing the next one. -->
+						<!-- Android: the port's own update check (androidPort.svelte.ts). It points at the
+						     release page; an APK updates by installing the next one. -->
+						{#if isAndroid}
+						<section class={GROUP}>
+							<h3 class={LABEL}>{t('settings.sections.updates')}</h3>
+							<div class={CARD}>
+								{@render row({
+									title: t('android_update.status_title'),
+									desc: androidUpdateText,
+									control: androidUpdateControl
+								})}
+							</div>
+						</section>
+						{/if}
+						<!-- The desktop updater isn't wired on Android (+layout.svelte). -->
 						{#if !isAndroid}
 						<section class={GROUP}>
 							<h3 class={LABEL}>{t('settings.sections.updates')}</h3>
@@ -904,10 +989,8 @@
 							<div class={CARD}>
 								{@render row({
 									title: t('settings.about.changelog'),
-									desc: t('settings.about.version').replace(
-										'{version}',
-										isAndroid ? (port.version?.release ?? '') : version
-									),
+									// The version is in the About header and on the release itself, marked
+									// installed: not a third time here.
 									below: changelog
 								})}
 							</div>
@@ -961,6 +1044,32 @@
 		checked={trackNotificationsFocusedOn}
 		onCheckedChange={setTrackNotificationsFocused}
 	/>{/snippet}
+{#snippet updateCheckSwitch()}<Switch
+		checked={updateCheckOn}
+		onCheckedChange={(on) => setStartupSwitch(UPDATE_CHECK_SETTING, on)}
+	/>{/snippet}
+{#snippet updatePopupSwitch()}<Switch
+		checked={updateCheckOn && updatePopupOn}
+		disabled={!updateCheckOn}
+		onCheckedChange={(on) => setStartupSwitch(UPDATE_POPUP_SETTING, on)}
+	/>{/snippet}
+{#snippet androidUpdateControl()}
+	{#if port.status === 'available'}
+		<Button size="sm" onclick={() => api.openExternal(ANDROID_RELEASES_URL).catch((e) => toast.error(String(e)))}
+			>{t('android_update.update')}</Button
+		>
+	{:else}
+		<Button
+			size="sm"
+			variant="outline"
+			disabled={port.status === 'checking'}
+			onclick={() => retryAndroidUpdateCheck()}
+		>
+			<HugeiconsIcon icon={RefreshIcon} class={port.status === 'checking' ? 'animate-spin' : ''} />
+			{port.status === 'failed' ? t('common.retry') : t('android_update.check')}
+		</Button>
+	{/if}
+{/snippet}
 {#snippet playOnStartSwitch()}<Switch checked={playOnStartOn} onCheckedChange={setPlayOnStart} />{/snippet}
 {#snippet autostartSwitch()}<Switch checked={autostartOn} onCheckedChange={setAutostart} />{/snippet}
 {#snippet startMinimizedSwitch()}<Switch checked={startMinimizedOn} onCheckedChange={setStartMinimized} />{/snippet}
@@ -1206,5 +1315,5 @@
 {/snippet}
 
 {#snippet changelog()}
-	<Changelog current={version} />
+	<Changelog />
 {/snippet}

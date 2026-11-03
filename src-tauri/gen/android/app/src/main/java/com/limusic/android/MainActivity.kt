@@ -158,6 +158,9 @@ class MainActivity : TauriActivity() {
     // field is never under the keyboard. Immersive, hidden bars report nothing, and the cutout
     // is left out on purpose: the page uses the whole screen, the camera hole included.
     this.webView = webView
+    // Before anything else reaches the page: without it, calls made before Android reports the
+    // page as started are refused (see IpcOrigin).
+    IpcOrigin.install(webView)
     ViewCompat.setOnApplyWindowInsetsListener(webView) { v, insets ->
       val bars = insets.getInsets(
         if (immersive()) {

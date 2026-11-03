@@ -62,17 +62,31 @@ class SignInActivity : ComponentActivity() {
 
     private var current = WeakReference<SignInActivity>(null)
 
-    /** Rust's verdict on the cookies (`android::sign_in_finished`). Main thread. */
+    /**
+     * Rust's verdict on the cookies (`android::sign_in_finished`). Main thread.
+     *
+     * Once Rust has the music.youtube.com session, the profile's own copy of the Google sign-in
+     * goes. It is a whole Google account session (accounts.google.com, every Google service), far
+     * more than the YouTube Music cookies the app keeps, and nothing on Android reads it again:
+     * there is no hidden refresh window, and "add account" empties the profile before it starts.
+     * The next sign-in asks Google again instead of continuing silently.
+     */
     fun finished(ok: Boolean, message: String?) {
       val a = current.get()?.takeUnless { it.isFinishing || it.isDestroyed } ?: return
-      if (ok) a.finish() else a.showError(message)
+      if (ok) {
+        forget()
+        a.finish()
+      } else {
+        a.showError(message)
+      }
     }
 
     /**
-     * An account was removed from Limusic: the Google session this page signed in with goes too.
-     * The profile otherwise keeps it after the app has deleted its own copy (the next sign-in
-     * would walk straight back in), and Android has no hidden refresh window to use it the way the
-     * desktop does. Main thread. A profile that was never made is left alone.
+     * Empty the profile: its cookies and site storage. After a sign-in has been handed to Rust
+     * ([finished]), and when an account is removed from Limusic, so the profile never holds a
+     * Google session the app has no use for (the next sign-in would otherwise walk straight back
+     * in). Android has no hidden refresh window to use it the way the desktop does. Main thread.
+     * A profile that was never made is left alone.
      */
     fun forget() {
       if (!WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE)) return
