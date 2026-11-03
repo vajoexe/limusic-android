@@ -23,6 +23,15 @@
 		{ href: '/library', label: t('nav.library'), icon: LibraryIcon },
 		{ href: '/stats', label: t('nav.stats'), icon: Chart02Icon }
 	]);
+	// Search tapped while already on it: back to the field, keyboard up and the old query selected,
+	// as upstream's sidebar does (953845e) and phone music apps do.
+	function refocusSearch(e: MouseEvent) {
+		if (!isActive('/search')) return;
+		e.preventDefault();
+		const input = document.querySelector<HTMLInputElement>('#search-form input');
+		input?.focus();
+		input?.select();
+	}
 	const isActive = (href: string) =>
 		href === '/' ? page.url.pathname === '/' : page.url.pathname.startsWith(href);
 
@@ -69,6 +78,7 @@
 	{@const on = isActive(n.href)}
 	<a
 		href={n.href}
+		onclick={n.href === '/search' ? refocusSearch : undefined}
 		class="{item} {on ? 'text-foreground' : 'text-muted-foreground'}"
 		aria-current={on ? 'page' : undefined}
 		aria-label={n.label}
