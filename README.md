@@ -78,7 +78,9 @@ What doesn't work, or works differently:
 - **Sign-in** happens on Google's web sign-in page inside the app. Android's
   account picker can't be used, because it gives out a different kind of login
   than the one YouTube Music's web API accepts. If Google ever blocks the page,
-  pasting cookies still works.
+  pasting cookies still works. The app keeps only the YouTube Music cookies and
+  clears the Google session from the sign-in page right after, so signing in
+  again asks Google from the start. [SECURITY.md](SECURITY.md) has the details.
 - **Tray, mini player window, global hotkeys, start on login and the
   self-updater** are desktop features with no Android equivalent. Instead of
   updating itself, the app tells you when a newer release is out (see
@@ -94,7 +96,8 @@ What doesn't work, or works differently:
 
 Download the APK from [Releases](https://github.com/vajoexe/limusic-android/releases)
 and open it on your phone. Android will ask you to allow installs from your browser
-or file manager the first time.
+or file manager the first time. What changed in each release is in
+[CHANGELOG.md](CHANGELOG.md).
 
 You need Android 8.0 or newer and Android System WebView 111 or newer. The APK
 is universal: it runs natively on 64-bit ARM (`arm64-v8a`) phones and tablets

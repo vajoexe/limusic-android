@@ -15,7 +15,10 @@ normal user agent, and the line under the title always shows which site you are
 on. You type your password into Google's page; the app never sees it. When the
 page lands on music.youtube.com, the app reads that site's cookies, checks them
 against YouTube Music, and keeps them only if the check passes. Pasting a
-session cookie by hand still works as a fallback.
+session cookie by hand still works as a fallback. If you used the Paste button,
+the app empties the clipboard once the sign-in succeeds, so the cookie doesn't
+stay in your keyboard's clipboard history. Anything else you copied in the
+meantime is left alone.
 
 **What is stored.** The YouTube Music session cookies of each saved account are
 kept in the app's database, in the app's private storage. Other apps can't read
@@ -23,12 +26,17 @@ it, and Android's file-based encryption keeps it unreadable on disk until the
 phone is first unlocked after a restart. The app does not add its own
 encryption on top. Backups are off: neither Google's cloud backup,
 nor device-to-device transfer, nor `adb backup` copies the app's data.
+Removing an account deletes its cookies from the database file itself: the
+freed space is overwritten and the database's write-ahead log is emptied, so no
+old copy is left behind on disk.
 
-**The sign-in screen's own session.** The sign-in screen keeps Google's web
-session in a WebView profile of its own, separate from the rest of the app, so
-signing in again later doesn't always ask for your password. Removing an
-account from Limusic also clears that session. Signing out keeps it, the same
-way the desktop app does.
+**The sign-in screen's own session.** The sign-in screen runs in a WebView
+profile of its own, separate from the rest of the app. While you sign in, that
+profile holds a full Google session, which covers every Google service and not
+only YouTube Music. As soon as the app has the YouTube Music cookies, it clears
+that profile's cookies and site storage. Nothing on Android uses that session
+again, so the app doesn't keep it. Signing in again later asks Google from the
+start. Removing an account clears the profile too.
 
 **Logs and bug reports.** Cookies, tokens and passwords are never written to
 the log. "Open the bug form" fills in a summary with cookies, tokens, signed
