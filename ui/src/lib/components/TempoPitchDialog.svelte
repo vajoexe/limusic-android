@@ -29,10 +29,9 @@
 	import { playback, setTempoPitch } from '$lib/player.svelte';
 	import { t } from '$lib/i18n.svelte';
 	import {
-		AVAILABLE_PRESETS,
 		EFFECT_PRESETS_KEY,
-		REVERB_SUPPORTED,
-		playable,
+		playableWith,
+		presetsFor,
 		ORIGINAL,
 		PRESET_NAME_MAX,
 		ROOMS,
@@ -46,8 +45,14 @@
 		type EffectPreset,
 		type EffectSettings
 	} from '$lib/effect-presets';
+	import { isAndroid } from '$lib/platform.svelte';
 
 	let { open = $bindable(false) }: { open: boolean } = $props();
+
+	/** The Android libmpv has no reverb (see `presetsFor`). */
+	const REVERB_SUPPORTED = !isAndroid;
+	const AVAILABLE_PRESETS = presetsFor(REVERB_SUPPORTED);
+	const playable = (s: EffectSettings) => playableWith(REVERB_SUPPORTED, s);
 
 	const BUILTIN_ICONS: Record<BuiltinId, IconSvgElement> = {
 		original: MusicNote01Icon,

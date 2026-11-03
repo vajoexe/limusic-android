@@ -1,4 +1,3 @@
-import { isAndroid } from '$lib/platform.svelte';
 import type { Reverb } from './api';
 
 export type EffectSettings = { speed: number; semitones: number; reverb: Reverb };
@@ -37,18 +36,20 @@ export const BUILTIN_PRESETS = [
 ] as const satisfies readonly (EffectSettings & { id: string })[];
 export type BuiltinId = (typeof BUILTIN_PRESETS)[number]['id'];
 /** Reverb needs FFmpeg's audio filters (afir, amix, adelay and the rest), and the Android libmpv
- *  is built without them (README, "audio effects"). Tempo and pitch work everywhere. */
-export const REVERB_SUPPORTED = !isAndroid;
-/** The built-ins this build can play: without reverb on Android, where Hall (reverb and nothing
- *  else) has nothing left to offer and Slowed and Nightcore keep their tempo and pitch. */
-export const AVAILABLE_PRESETS: readonly (EffectSettings & { id: BuiltinId })[] = REVERB_SUPPORTED
-	? BUILTIN_PRESETS
-	: BUILTIN_PRESETS.filter((p) => p.speed !== 1 || p.semitones !== 0 || !p.reverb.enabled).map(
-			(p) => ({ ...p, reverb: { ...p.reverb, enabled: false } })
-		);
-/** A setting as this build can play it: reverb off where it isn't supported. */
-export const playable = (s: EffectSettings): EffectSettings =>
-	REVERB_SUPPORTED ? s : { ...s, reverb: { ...s.reverb, enabled: false } };
+ *  is built without them (README, "audio effects"). Tempo and pitch work everywhere. The caller
+ *  says which build this is (`!isAndroid`), so this module stays plain TypeScript the self-check
+ *  can run. */
+/** The built-ins a build can play: without reverb, Hall (reverb and nothing else) has nothing left
+ *  to offer, and Slowed and Nightcore keep their tempo and pitch. */
+export const presetsFor = (reverb: boolean): readonly (EffectSettings & { id: BuiltinId })[] =>
+	reverb
+		? BUILTIN_PRESETS
+		: BUILTIN_PRESETS.filter((p) => p.speed !== 1 || p.semitones !== 0 || !p.reverb.enabled).map(
+				(p) => ({ ...p, reverb: { ...p.reverb, enabled: false } })
+			);
+/** A setting as a build can play it: reverb off where it isn't supported. */
+export const playableWith = (reverb: boolean, s: EffectSettings): EffectSettings =>
+	reverb ? s : { ...s, reverb: { ...s.reverb, enabled: false } };
 export const ORIGINAL: EffectSettings = BUILTIN_PRESETS[0];
 
 /** What you hear: a switched-off reverb's settings make no difference to it. */

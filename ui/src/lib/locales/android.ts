@@ -48,7 +48,8 @@ export const ANDROID_EN: Partial<Record<TranslationKey, string>> = {
 	'home.sections_hint': "Hold a section's handle and drag it to move it. Hidden sections keep their place.",
 	// Read out by TalkBack, where Space and Enter mean nothing: the row says what it is.
 	// Integrations (Discord, the tray) and the updater are desktop-only, so the tabs don't promise them.
-	'settings.tabs.general_hint': 'Language, history and how the app starts.',
+	// What happens when the app opens has a tab of its own (Startup).
+	'settings.tabs.general_hint': 'Language and listening history.',
 	'settings.tabs.about_hint': 'Version, support and what changed.',
 	// An app on a phone has no environment to set a variable in.
 	'settings.general.stream_clients_hint': 'Turn a client off to skip it when resolving streams.',

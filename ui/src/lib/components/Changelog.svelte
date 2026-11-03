@@ -85,6 +85,7 @@
 	import { Button } from '$lib/components/ui/button';
 	import { releaseNotes, openExternal, type FetchError, type ReleaseNote } from '$lib/api';
 	import { copyText } from '$lib/clipboard';
+	import { countdown } from '$lib/countdown';
 	import { t } from '$lib/i18n.svelte';
 
 	/** Automatic retries: about once a minute, or later when GitHub says when, for a while. After
@@ -96,10 +97,19 @@
 	let releases = $state<ReleaseNote[] | null>(null);
 	let error = $state<FetchError | null>(null);
 	let loading = $state(true);
-	/** Minutes until the next automatic try, or null when none is scheduled. */
-	let retryInMin = $state<number | null>(null);
+	/** When the next automatic try runs (ms since the epoch), or null when none is scheduled. */
+	let retryAt = $state<number | null>(null);
+	/** Ticks once a second while a retry is scheduled, for the countdown. */
+	let now = $state(Date.now());
 	let autoRetries = 0;
 	let timer: ReturnType<typeof setTimeout> | undefined;
+
+	$effect(() => {
+		if (retryAt === null) return;
+		now = Date.now();
+		const tick = setInterval(() => (now = Date.now()), 1000);
+		return () => clearInterval(tick);
+	});
 
 	/** The command rejects with a `github_api::FetchError`; anything else (the IPC itself failing)
 	 *  is unknown and not retried on its own. */
@@ -112,7 +122,7 @@
 
 	async function load() {
 		clearTimeout(timer);
-		retryInMin = null;
+		retryAt = null;
 		loading = true;
 		try {
 			releases = await releaseNotes();
@@ -127,7 +137,7 @@
 					MAX_WAIT_SECS,
 					Math.max(AUTO_RETRY_SECS, err.retry_after_secs ?? AUTO_RETRY_SECS)
 				);
-				retryInMin = Math.ceil(secs / 60);
+				retryAt = Date.now() + secs * 1000;
 				timer = setTimeout(load, secs * 1000);
 			}
 		} finally {
@@ -219,7 +229,9 @@
 					{/if}
 				</span>
 			</summary>
-			<div class="min-w-0 pb-3 text-sm text-muted-foreground">
+			<!-- overflow-wrap: a long link or path in the notes breaks where it has to instead of running
+			     out of the card, which clips it. Ordinary words wrap as before; code blocks scroll. -->
+			<div class="min-w-0 pb-3 text-sm text-muted-foreground [overflow-wrap:anywhere]">
 				{#each parse(r.body) as b}
 					{#if b.t === 'h'}
 						<h4 class="mt-3 mb-1 font-medium text-foreground">{@render spans(b.spans)}</h4>
@@ -286,9 +298,10 @@
 					>{/if}
 			</p>
 			<p class="mt-0.5 text-muted-foreground">{message(error)}</p>
-			{#if retryInMin !== null && !loading}
-				<p class="mt-1 text-xs text-muted-foreground">
-					{t('changelog.retry_in', { minutes: retryInMin })}
+			{#if retryAt !== null && !loading}
+				<!-- tabular-nums: the digits keep their width as they count down, so the line doesn't jitter. -->
+				<p class="mt-1 text-xs text-muted-foreground tabular-nums">
+					{t('changelog.retry_in', { time: countdown(retryAt, now) })}
 				</p>
 			{/if}
 			<Button class="mt-2.5" size="sm" onclick={retryNow} disabled={loading}>

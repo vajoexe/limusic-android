@@ -1,6 +1,6 @@
 // Run: node --experimental-strip-types ui/src/lib/effect-presets.check.ts
 import {
-	BUILTIN_PRESETS, ORIGINAL, presetSettings, readEffectPresets, sameEffects, sameSound, withRoom,
+	BUILTIN_PRESETS, ORIGINAL, playableWith, presetSettings, presetsFor, readEffectPresets, sameEffects, sameSound, withRoom,
 	type EffectPreset
 } from './effect-presets.ts';
 
@@ -51,5 +51,20 @@ ok(sameSound(ORIGINAL, { ...ORIGINAL, reverb: { ...ORIGINAL.reverb, wet: 90 } })
 ok(!sameSound(ORIGINAL, { ...ORIGINAL, reverb: withRoom(ORIGINAL.reverb, 2) }), 'Reverb on is a different sound');
 ok(withRoom(preset.reverb, 5).decay === 3.2 && withRoom(preset.reverb, 5).wet === 40,
 	'A room brings its own length and keeps the amount');
+
+// Without reverb (Android): Hall is reverb and nothing else, so it goes; the rest stay with their
+// tempo and pitch and lose only the reverb. With it, the built-ins are untouched.
+const noReverb = presetsFor(false);
+ok(presetsFor(true) === BUILTIN_PRESETS, 'With reverb every built-in is offered as it is');
+ok(noReverb.map((p) => p.id).join() === 'original,slowed,nightcore,practice', 'Hall is dropped without reverb');
+ok(noReverb.every((p) => !p.reverb.enabled), 'No built-in turns reverb on without it');
+ok(noReverb.every((p) => {
+	const b = BUILTIN_PRESETS.find((x) => x.id === p.id)!;
+	return p.speed === b.speed && p.semitones === b.semitones;
+}), 'Slowed and Nightcore keep their tempo and pitch without reverb');
+const wet = { ...ORIGINAL, speed: 0.9, reverb: withRoom(ORIGINAL.reverb, 2) };
+ok(playableWith(true, wet) === wet, 'With reverb a setting plays as it is');
+ok(!playableWith(false, wet).reverb.enabled && playableWith(false, wet).speed === 0.9,
+	'Without reverb a setting keeps everything but the reverb');
 
 console.log('ok — effect presets');

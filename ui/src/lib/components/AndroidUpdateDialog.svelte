@@ -77,12 +77,15 @@
 {#if port.popup && port.update}
 	<Dialog.Root bind:open>
 		<!-- Well short of the screen: the dimmed band above and below is where a tap outside closes
-		     it. The side gutters alone are too thin to hit on a phone. Inline, because the compact
-		     layout's dialog rule (layout.css) sets max-height and overflow with the same insets and
-		     wins over a utility class. Only the notes scroll: the Update button stays in view. -->
+		     it. The side gutters alone are too thin to hit on a phone held upright. The band is at
+		     most 15% of the height: a phone on its side is only ~390px tall, where a fixed 8rem left
+		     the notes one faded line, and its wide side gutters are easy to hit anyway. Inline,
+		     because the compact layout's dialog rule (layout.css) sets max-height and overflow with
+		     the same insets and wins over a utility class. Only the notes scroll: the Update button
+		     stays in view. -->
 		<Dialog.Content
 			class="grid-rows-[auto_minmax(0,1fr)_auto]"
-			style="max-height: min(40rem, calc(100dvh - var(--inset-top, 0px) - var(--inset-bottom, 0px) - 8rem)); overflow: hidden"
+			style="max-height: min(40rem, calc(100dvh - var(--inset-top, 0px) - var(--inset-bottom, 0px) - min(8rem, 15dvh))); overflow: hidden"
 		>
 			<Dialog.Header>
 				<Dialog.Title>{t('android_update.title')}</Dialog.Title>
@@ -97,7 +100,7 @@
 				<div
 					bind:this={notes}
 					onscroll={edges}
-					class="min-h-0 overflow-y-auto overscroll-contain text-sm text-muted-foreground"
+					class="min-h-0 overflow-y-auto overscroll-contain text-sm text-muted-foreground [overflow-wrap:anywhere]"
 					style:mask-image={mask}
 					style:-webkit-mask-image={mask}
 				>

@@ -665,11 +665,13 @@
 								})}
 							</div>
 						</section>
+						<!-- Android has no tray, login items, window titlebar or desktop toasts (the media
+						     notification already names the song), and resuming playback is under Startup there,
+						     so the whole section stays desktop-only instead of showing an empty card. -->
+						{#if !isAndroid}
 						<section class={GROUP}>
 							<h3 class={LABEL}>{t('settings.sections.system')}</h3>
 							<div class={CARD}>
-								<!-- Android has no tray, login items, window titlebar or desktop toasts (the
-								     media notification already names the song), so those rows stay desktop-only. -->
 								{#if !isAndroid}
 								{@render row({
 									title: t('settings.general.close_to_tray'),
@@ -717,6 +719,7 @@
 								{/if}
 							</div>
 						</section>
+						{/if}
 					{:else if tab === 'startup'}
 						<section class={GROUP}>
 							<h3 class={LABEL}>{t('startup.section')}</h3>

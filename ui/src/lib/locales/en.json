@@ -1225,7 +1225,7 @@
 			"malformed": "GitHub sent back something Limusic couldn't read.",
 			"unknown": "Something went wrong while loading it."
 		},
-		"retry_in": "Trying again on its own in about {minutes} min.",
+		"retry_in": "Trying again on its own in {time}.",
 		"retrying": "Retrying...",
 		"copy_hash": "Copy {label}"
 	},
