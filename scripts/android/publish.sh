@@ -159,16 +159,33 @@ grep -qE "^## $upstream-android\.$pick\b" CHANGELOG.md || warn "CHANGELOG.md has
 ok "notes ready"
 
 # ---- build ----------------------------------------------------------------------------------------
-step "Building (scripts/build.sh --android, asks for the keystore password)"
-"$root/scripts/build.sh" --android --timeout 0 || die "the build failed (log in target/build-logs)"
 apk="$root/src-tauri/gen/android/app/build/outputs/apk/universal/release/limusic-$upstream-universal-android.$pick.apk"
-[ -f "$apk" ] || die "the build finished but $apk is not there"
-[ "$(git rev-parse HEAD)" = "$(git rev-parse origin/master)" ] && git diff --quiet || die "the tree changed during the build"
+# A run that stopped after the build can reuse its APK, as long as nothing the app is built from
+# has changed since: only this script and the changelog may differ from the commit it came from.
+reuse=0
+if [ -f "$apk" ] && [ -f "$apk.commit" ]; then
+  built="$(cat "$apk.commit")"
+  if git cat-file -e "$built^{commit}" 2>/dev/null \
+    && git diff --quiet "$built" HEAD -- . ':!scripts/android/publish.sh' ':!CHANGELOG.md'; then
+    step "Build"
+    echo "  $(basename "$apk") was built from $(git rev-parse --short "$built"); only the publish script or the changelog changed since."
+    confirm "Use that APK instead of building again?" && reuse=1
+  fi
+fi
+if [ "$reuse" = 0 ]; then
+  step "Building (scripts/build.sh --android, asks for the keystore password)"
+  rm -f "$apk.commit"
+  "$root/scripts/build.sh" --android --timeout 0 || die "the build failed (log in target/build-logs)"
+  [ -f "$apk" ] || die "the build finished but $apk is not there"
+  [ "$(git rev-parse HEAD)" = "$(git rev-parse origin/master)" ] && git diff --quiet || die "the tree changed during the build"
+  git rev-parse HEAD >"$apk.commit"
+fi
 
 sdk="${ANDROID_HOME:-$(conf_get ANDROID_HOME)}"
 apksigner="$(ls -d "$sdk"/build-tools/*/apksigner 2>/dev/null | sort -V | tail -1)"
 [ -x "$apksigner" ] || die "apksigner not found under $sdk/build-tools (ANDROID_HOME)"
-cert="$("$apksigner" verify --print-certs "$apk" | sed -nE 's/^Signer #1 certificate SHA-256 digest: //p' | head -1)"
+# The label depends on the scheme: "Signer #1 certificate ..." or "V3.0 Signer: certificate ...".
+cert="$("$apksigner" verify --print-certs "$apk" 2>/dev/null | sed -nE 's/^(Signer #[0-9]+|V[0-9.]+ Signer):? certificate SHA-256 digest: //p' | sort -u | head -1)"
 [ -n "$cert" ] || die "could not read the APK's certificate"
 cert_colons="$(echo "$cert" | tr 'a-f' 'A-F' | sed 's/../&:/g; s/:$//')"
 sha="$(sha256sum "$apk" | cut -d' ' -f1)"
