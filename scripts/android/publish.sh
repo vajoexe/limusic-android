@@ -251,3 +251,5 @@ ok "published: https://github.com/$repo/releases/tag/$tag"
 
 cp "$apk" "$release_dir/$name"
 ok "copy kept: $release_dir/$name"
+
+printf '\n%s%sPublished release %s.%s Done, you can close this window.\n' "$B" "$G" "$tag" "$N"
