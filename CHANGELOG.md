@@ -7,6 +7,45 @@ followed by the port's own revision. Downloads are on the
 Every release is signed with the same key, certificate SHA-256
 `EB:14:47:0C:C1:AD:37:7A:52:6A:93:F8:75:E4:1C:16:6E:61:D0:3D:53:9B:54:61:3F:39:BE:BB:55:F7:E8:85`.
 
+## 1.4.0-rc.4-android.1
+
+Now built on Limusic 1.4.0-rc.4.
+
+### Added
+
+- Material You theme, in Settings > Appearance. On a phone it brings its colors,
+  font and a wavy progress bar in the player. Tablets and DeX also get its
+  restyled sidebar and player bar.
+- Enhanced Lyrics, a card in Settings > Appearance that animates the lyrics as
+  they're sung. It also works for lyrics that are only timed by line.
+- Unison as a lyrics source, with a button to rate the lyrics it found.
+- "Prefer word-by-word lyrics" in Settings, for when a source has both kinds.
+- Share links can start at a time: tick "Start at" in the Share dialog. A link
+  with a time opened through Open link starts playing there.
+- Timecodes in comments, like 2:54, are tappable and jump to that point.
+- Tapping Search in the bottom bar while you're already on Search puts the cursor
+  back in the search field.
+
+### Fixed
+
+- Back and Forward bring back your earlier searches, results included.
+- Picking a category while you type keeps what you've typed, and a category
+  picked while a search is still loading no longer goes back to the old one.
+- A song removed from the queue while shuffling stays removed when you turn
+  shuffle off.
+- The radio of a music video no longer comes up empty when Hide videos is on.
+- Playback no longer stops when one of YouTube's fallback servers fails in a
+  particular way.
+- The search page no longer empties when the app switches between its phone and
+  tablet layouts, for example when you unfold a foldable or resize the window in
+  split screen or DeX.
+
+### Changed
+
+- SimpMusic is gone from the lyrics sources. Its server no longer answers other
+  apps.
+- New and updated translations.
+
 ## 1.4.0-rc.3-android.4
 
 ### Fixed
