@@ -4,7 +4,8 @@
 #   1. preflight: on master, nothing uncommitted, HEAD pushed, gh installed and signed in;
 #   2. picks the revision with you (android-port.properties), refuses one Android would see as a
 #      downgrade or that is already released, and commits and pushes a changed revision;
-#   3. opens the release notes in an editor (a template the first time) and waits for you;
+#   3. opens the release notes in an editor and waits for you. The first time they are filled in from
+#      the version's CHANGELOG.md entry (changelog-notes.sh), or a template when it has none;
 #   4. runs scripts/build.sh --android, which asks for the keystore password itself;
 #   5. shows what will be published and asks before anything leaves this machine;
 #   6. creates the release as a draft, uploads the APK, downloads it back and compares the
@@ -124,7 +125,10 @@ step "Release notes"
 mkdir -p "$release_dir"
 notes="$release_dir/release-notes-$tag.md"
 marker='<!-- Write what changed above this line. Delete this line when done. -->'
-if [ ! -s "$notes" ]; then
+if [ ! -s "$notes" ] && "$root/scripts/android/changelog-notes.sh" "$upstream-android.$pick" "$root/CHANGELOG.md" >"$notes"; then
+  echo "  Filled in from CHANGELOG.md (## $upstream-android.$pick): $notes"
+  echo "  Read them over in the editor; change anything there, it is what the release page shows."
+elif [ ! -s "$notes" ]; then
   cat >"$notes" <<EOF
 ### Added
 
@@ -166,7 +170,7 @@ reuse=0
 if [ -f "$apk" ] && [ -f "$apk.commit" ]; then
   built="$(cat "$apk.commit")"
   if git cat-file -e "$built^{commit}" 2>/dev/null \
-    && git diff --quiet "$built" HEAD -- . ':!scripts/android/publish.sh' ':!CHANGELOG.md'; then
+    && git diff --quiet "$built" HEAD -- . ':!scripts/android/publish.sh' ':!scripts/android/changelog-notes.sh' ':!CHANGELOG.md'; then
     step "Build"
     echo "  $(basename "$apk") was built from $(git rev-parse --short "$built"); only the publish script or the changelog changed since."
     confirm "Use that APK instead of building again?" && reuse=1

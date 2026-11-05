@@ -7,6 +7,32 @@ followed by the port's own revision. Downloads are on the
 Every release is signed with the same key, certificate SHA-256
 `EB:14:47:0C:C1:AD:37:7A:52:6A:93:F8:75:E4:1C:16:6E:61:D0:3D:53:9B:54:61:3F:39:BE:BB:55:F7:E8:85`.
 
+## 1.4.0-rc.4-android.2
+
+### Added
+
+- Touch and hold a song, a song in the queue or a card to open its menu, the
+  same one the ⋯ button opens. The menu opens right where your thumb is.
+- "Open the player when you press play" in Settings > Appearance > Player view,
+  for anyone who liked the full player opening by itself.
+
+### Changed
+
+- Playing a song starts it in the bar at the bottom of the screen instead of
+  opening the full player. Tap the bar to open the player.
+- Song rows no longer show a ⋯ button on every row. Touch and hold the song
+  instead. TalkBack and a keyboard still reach the button.
+
+### Fixed
+
+- Tapping a card or a row no longer presses buttons you can't see. Play, menu
+  and Subscribe buttons that only show up under a mouse took taps on the phone
+  too, so a tap on the corner of an artist card could subscribe to it.
+- The remove button on Home shortcuts and the Listen Together host buttons are
+  always shown on the phone, where they used to be invisible.
+- Touch and hold on a song no longer selects its title and brings up the copy
+  bar.
+
 ## 1.4.0-rc.4-android.1
 
 Now built on Limusic 1.4.0-rc.4.
