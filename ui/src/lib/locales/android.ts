@@ -28,6 +28,9 @@ export const ANDROID_EN: Partial<Record<TranslationKey, string>> = {
 	'settings.themes.load_font_file_hint':
 		'Load a .ttf, .otf or .woff from this device. It joins both dropdowns above.',
 	'settings.themes.mode_hint': "System follows your device's setting and switches with it.",
+	// Off by default on Android (autoopen.ts), so the hint says where the song went instead.
+	'settings.themes.open_player_hint':
+		'On, playing a song, album or playlist opens the full player. Off, it starts playing in the bar at the bottom of the screen, and tapping the bar opens the player.',
 	'dialogs.edit_playlist.local_artwork_note':
 		'Artwork stays on this device. Square JPEG or PNG works best.',
 	'dialogs.new_playlist.device_desc': 'No account needed, it stays on this device',

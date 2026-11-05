@@ -160,6 +160,10 @@
 	// wide has no room for the columns. It takes the grid variant's layout (duration on the artist
 	// line, a heart and an always-on ⋯) and no column header (`TrackColumns` hides there too).
 	const narrow = $derived(compact || platform.compact);
+	// The phone opens a row's ⋯ menu by touch and hold (`ctxHost`, layout.css), so the button isn't
+	// drawn on every row. It stays in the page, for TalkBack and a keyboard: screen-reader only, and
+	// visible again while it has keyboard focus. `sr-only` leaves it no box to tap.
+	const PHONE_MENU_TRIGGER = 'sr-only focus-visible:not-sr-only';
 	const cols = $derived(platform.compact ? undefined : columns);
 	const showRating = $derived(!narrow && !hideRating && !api.isLocalId(song.video_id));
 
@@ -502,9 +506,11 @@
 			{playlistId}
 			{queueIndex}
 			{inLibraryList}
-			triggerClass="cursor-pointer rounded-md p-1.5 text-muted-foreground hover:bg-accent/20 hover:text-foreground {narrow
-				? ''
-				: 'invisible group-focus-within:visible group-hover:visible'}"
+			triggerClass="cursor-pointer rounded-md p-1.5 text-muted-foreground hover:bg-accent/20 hover:text-foreground {platform.compact
+				? PHONE_MENU_TRIGGER
+				: narrow
+					? ''
+					: 'invisible group-focus-within:visible group-hover:visible'}"
 		/>
 		{@render trailing?.()}
 	</div>

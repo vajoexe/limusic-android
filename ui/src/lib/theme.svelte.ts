@@ -14,6 +14,7 @@
 // through — the customization is a set of overrides, not a rival theme to maintain.
 
 import { convertFileSrc } from '@tauri-apps/api/core';
+import { AUTO_OPEN_DEFAULTS } from './autoopen';
 import { logUi } from './errlog';
 import { hexToHsv, hexToOklch, isLight } from './color';
 import { artworkAccent, toAccent, warmAccent } from './artcolor';
@@ -142,8 +143,9 @@ export const appearance = $state({
 	 * side panels, which then sit over the now-playing view like they sit over a page (#62).
 	 */
 	tabbedPlayer: true,
-	/** Starting playback opens the now-playing view. Off, it plays and leaves you where you are (#64). */
-	openPlayerOnPlay: true,
+	/** Starting playback opens the now-playing view (#64); on Android its own key, off by default.
+	 *  See autoopen.ts for why there are two. */
+	...AUTO_OPEN_DEFAULTS,
 	/** A click on empty player-bar space toggles the now-playing view, and one around the artwork
 	 *  closes it (#302). Off, only the buttons and shortcuts do, for whoever trips it by accident. */
 	emptyClickTogglesPlayer: true,
@@ -583,6 +585,7 @@ export function initTheme(): void {
 			'classicPlayer',
 			'tabbedPlayer',
 			'openPlayerOnPlay',
+			'openPlayerOnPlayAndroid',
 			'emptyClickTogglesPlayer',
 			'artworkAccent',
 			'theaterLyrics',

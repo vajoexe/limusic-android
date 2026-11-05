@@ -27,6 +27,38 @@
    the desktop never has the class. `:where`, so hover keeps upstream's specificity. */
 @custom-variant hover (:where(html:not(.compact)) &:hover);
 
+/* What that costs the phone shell: a control revealed only by hover (`opacity-0` plus a
+   `group-hover:opacity-100`) never shows there, and an invisible element still takes the tap, so a
+   tap on a card's corner played it instead of opening it, through a button nobody could see. Such
+   a control carries `hover-reveal`, and on the phone it takes no pointer events while it is hidden.
+   Focus still reveals it and still works (focus doesn't need pointer events), so a keyboard on the
+   phone keeps it. Where the hover control is the only way to do something (a shortcut's remove
+   button, the Listen Together host's buttons), `touch-show` shows it on the phone instead. Desktop
+   and a DeX window (not `compact`) keep hover as it is. `hoverreveal.check.ts` finds any hover-only
+   control left without the class. */
+html.compact .hover-reveal:not(.touch-show):not(:focus-visible):not(:focus-within) {
+	pointer-events: none;
+}
+html.compact .hover-reveal.touch-show {
+	opacity: 1;
+}
+
+/* Touch and hold on an item (a song row, a card: whatever is `data-ctx`) opens its ⋯ menu, the
+   same one a right-click opens (`ctxHost`, menu.ts). Android's WebView does send `contextmenu` for
+   a long press, but only after it has selected the word under the finger, and ctxHost rightly
+   leaves a press on selected text to the system's copy bar, so the menu never came. On the phone
+   an item's text isn't selectable, and the system's own long-press callout is off: a press goes
+   straight to the menu. Fields inside an item stay editable. Desktop and DeX keep selection. */
+html.compact [data-ctx] {
+	-webkit-user-select: none;
+	user-select: none;
+	-webkit-touch-callout: none;
+}
+html.compact [data-ctx] :is(input, textarea, [contenteditable]) {
+	-webkit-user-select: text;
+	user-select: text;
+}
+
 /* `.theme-default` as well as :root, so the default palette can be put on an element the way the
    presets are. The Appearance tab's miniatures (`ThemeMock.svelte`) carry `theme-<id>` and `dark`
    themselves, which re-resolves every token for that subtree only: a slider drag restyles the

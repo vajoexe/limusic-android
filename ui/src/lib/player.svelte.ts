@@ -22,6 +22,7 @@ import { currentLocale, pushLocaleToRust, t } from './i18n.svelte';
 import { friendlyNetError, isUnreachable } from './neterr';
 import { whenBackOnline } from './reconnect';
 import { parseScrobbleConfig } from './scrobble';
+import { opensPlayerOnPlay } from './autoopen';
 
 export const playback = $state({
 	now: null as NowPlaying | null,
@@ -166,9 +167,11 @@ export function forgetVideoUrl(videoId: string) {
 	api.forgetVideoStream(videoId).catch(() => {});
 }
 
-/** No-op when the user has turned the auto-open off (#64): playback starts, the view stays put. */
+/** No-op when the user has turned the auto-open off (#64): playback starts, the view stays put.
+ *  On Android that is the default: the song starts in the pill (autoopen.ts). Read at the call, so
+ *  a changed switch applies to the very next song. */
 export const openPlayer = () => {
-	if (appearance.openPlayerOnPlay) np.open = true;
+	if (opensPlayerOnPlay(appearance, isAndroid)) np.open = true;
 };
 
 /** Play one track (a search row, a song card, a shelf), and show it. */

@@ -53,6 +53,29 @@ eqp(from({ left: 10, right: 50, top: 200, bottom: 240 }, 'right'), 'left:auto;ri
 viewport(1000, 300);
 eqp(at(100, 150), 'left:100px;right:auto;top:12px;bottom:auto', 'top left');
 
+// The track menu asks for `align: 'right'`, the ⋯'s alignment. On the desktop a right-click keeps
+// it: the menu's right edge sits at the cursor.
+const pressed = (x: number, y: number) =>
+	place(anchorMenu({ type: 'contextmenu', clientX: x, clientY: y } as unknown as Event, { align: 'right' }), W, H);
+viewport(1000, 800);
+eqp(pressed(500, 100), 'left:auto;right:500px;top:100px;bottom:auto', 'top right');
+// The phone (`html.compact`): a press grows the menu from the thumb into the roomier half, so a
+// press on the left of a row no longer opens it against the far edge (which was right:...).
+const compact = (on: boolean) =>
+	Object.assign(globalThis, { document: { documentElement: { classList: { contains: (c: string) => on && c === 'compact' } } } });
+compact(true);
+viewport(393, 800);
+eqp(pressed(100, 100), 'left:100px;right:auto;top:100px;bottom:auto', 'top left');
+eqp(pressed(300, 100), 'left:auto;right:93px;top:100px;bottom:auto', 'top right');
+eqp(pressed(100, 700), 'left:100px;right:auto;top:auto;bottom:100px', 'bottom left');
+// The ⋯ button itself still lines the menu up under it, phone or not.
+eqp(from({ left: 340, right: 370, top: 200, bottom: 230 }, 'right'), 'left:auto;right:23px;top:234px;bottom:auto', 'top right');
+// And a non-phone document keeps the desktop rule even with the class check in place: right edge
+// at the cursor, clamped 8px short of the left edge when the cursor is too close to it.
+compact(false);
+viewport(1000, 800);
+eqp(pressed(100, 100), 'left:auto;right:768px;top:100px;bottom:auto', 'top right');
+
 // Minimal DOM surface for the shared right-click attachment: artwork opts in, other controls
 // keep their own meaning, and Shift+right-click still reaches the native menu.
 class MenuElement extends EventTarget {

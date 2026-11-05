@@ -38,6 +38,7 @@
 	import { appIcon, chooseAppIcon } from '$lib/appicon.svelte';
 	import { t, type TranslationKey } from '$lib/i18n.svelte';
 	import { isAndroid, platform } from '$lib/platform.svelte';
+	import { autoOpenKey } from '$lib/autoopen';
 	import {
 		THEMES,
 		FONTS,
@@ -451,7 +452,20 @@
 			</div>
 		</section>
 
-		{#if !platform.compact}
+		{#if platform.compact}
+		<!-- The phone player is MobilePlayer, not the desktop now-playing view: of the rows below only
+		     this one applies to it. -->
+		<section class={GROUP}>
+			<h3 class={LABEL}>{t('settings.sections.player_view')}</h3>
+			<div data-settings-card class={CARD}>
+				{@render row({
+					title: t('settings.themes.open_player'),
+					desc: t('settings.themes.open_player_hint'),
+					control: openPlayerSwitch
+				})}
+			</div>
+		</section>
+		{:else}
 		<section class={GROUP}>
 			<h3 class={LABEL}>{t('settings.sections.player_view')}</h3>
 			<div data-settings-card class={CARD}>
@@ -715,9 +729,10 @@
 		checked={appearance.classicPlayer}
 		onCheckedChange={(on) => setAppearance({ classicPlayer: on })}
 	/>{/snippet}
+<!-- Android keeps a preference of its own, off by default (autoopen.ts). -->
 {#snippet openPlayerSwitch()}<Switch
-		checked={appearance.openPlayerOnPlay}
-		onCheckedChange={(on) => setAppearance({ openPlayerOnPlay: on })}
+		checked={appearance[autoOpenKey(isAndroid)]}
+		onCheckedChange={(on) => setAppearance({ [autoOpenKey(isAndroid)]: on })}
 	/>{/snippet}
 {#snippet emptyClickSwitch()}<Switch
 		checked={appearance.emptyClickTogglesPlayer}

@@ -83,6 +83,12 @@ export function place(a: Anchor, w: number, h: number) {
 export function anchorMenu(e: Event, { align = 'left' }: { align?: 'left' | 'right' } = {}): Anchor {
 	const atPointer = e.type === 'contextmenu';
 	const { clientX: px, clientY: py } = e as MouseEvent;
+	// On the phone that "pointer" is a thumb holding an item (layout.css). The ⋯'s right-hand
+	// alignment would put the menu's right edge there, so a press on the left half of a row opened
+	// it against the far edge of the screen. Instead it grows from the thumb into whichever half has
+	// more room, and the items are a short move away. The desktop's right-click keeps upstream's.
+	if (atPointer && typeof document !== 'undefined' && document.documentElement.classList.contains('compact'))
+		align = px > window.innerWidth / 2 ? 'right' : 'left';
 	const box = atPointer
 		? { left: px, right: px, top: py, bottom: py }
 		: (e.currentTarget as HTMLElement).getBoundingClientRect();
