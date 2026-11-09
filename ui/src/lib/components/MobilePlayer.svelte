@@ -63,6 +63,7 @@
 	import TheaterMode from './TheaterMode.svelte';
 	import TrackMenu from './TrackMenu.svelte';
 	import M3SeekWave from './M3SeekWave.svelte';
+	import LiveBadge from './LiveBadge.svelte';
 
 	let { onClose }: { onClose: () => void } = $props();
 
@@ -420,41 +421,50 @@
 				{/if}
 			</div>
 
-			<!-- The Material theme's wave seek bar, as in theater mode (upstream #590): it draws only
-			     under that theme, where the range above it turns see-through; elsewhere it's nothing. -->
-			<div class="m3-seek m3-seek-theater relative mt-4 flex w-full items-center">
-				<M3SeekWave
-					pct={pct / 100}
-					paused={playback.paused}
-					duration={shownDuration}
-					dragging={seekDrag !== null}
-					strokeWidth={4.5}
-					thumbWidth={5}
-					thumbHeight={22}
-					maxAmp={3.4}
-					wavelength={24}
-				/>
-				<input
-					type="range"
-					class="range theater-range w-full"
-					style="--pct:{pct}%"
-					min="0"
-					max={shownDuration || 0}
-					value={shownPosition}
-					oninput={(e) => (seekDrag = Number(e.currentTarget.value) * playback.speed)}
-					onchange={(e) => {
-						const v = Number(e.currentTarget.value) * playback.speed;
-						playback.position = v;
-						seekDrag = null;
-						api.seek(v);
-					}}
-					aria-label={t('player.seek')}
-				/>
-			</div>
-			<div class="mt-1 flex justify-between text-xs font-medium tabular-nums text-muted-foreground">
-				<span>{fmt(shownPosition)}</span>
-				<span>{fmt(shownDuration)}</span>
-			</div>
+			{#if playback.now?.live}
+				<!-- A broadcast on air (#424): no length and no seeking, so a Live badge where the seek
+				     row and its times were, as upstream's player bar and theater mode do. Same height
+				     (mt-4 + the bar + mt-1 + the times), so the controls below stay put. -->
+				<div class="mt-4 flex h-[2.375rem] w-full items-center justify-center">
+					<LiveBadge />
+				</div>
+			{:else}
+				<!-- The Material theme's wave seek bar, as in theater mode (upstream #590): it draws only
+				     under that theme, where the range above it turns see-through; elsewhere it's nothing. -->
+				<div class="m3-seek m3-seek-theater relative mt-4 flex w-full items-center">
+					<M3SeekWave
+						pct={pct / 100}
+						paused={playback.paused}
+						duration={shownDuration}
+						dragging={seekDrag !== null}
+						strokeWidth={4.5}
+						thumbWidth={5}
+						thumbHeight={22}
+						maxAmp={3.4}
+						wavelength={24}
+					/>
+					<input
+						type="range"
+						class="range theater-range w-full"
+						style="--pct:{pct}%"
+						min="0"
+						max={shownDuration || 0}
+						value={shownPosition}
+						oninput={(e) => (seekDrag = Number(e.currentTarget.value) * playback.speed)}
+						onchange={(e) => {
+							const v = Number(e.currentTarget.value) * playback.speed;
+							playback.position = v;
+							seekDrag = null;
+							api.seek(v);
+						}}
+						aria-label={t('player.seek')}
+					/>
+				</div>
+				<div class="mt-1 flex justify-between text-xs font-medium tabular-nums text-muted-foreground">
+					<span>{fmt(shownPosition)}</span>
+					<span>{fmt(shownDuration)}</span>
+				</div>
+			{/if}
 
 			<div class="mt-2 flex items-center justify-between">
 				{#if episode}

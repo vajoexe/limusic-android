@@ -7,6 +7,27 @@ followed by the port's own revision. Downloads are on the
 Every release is signed with the same key, certificate SHA-256
 `EB:14:47:0C:C1:AD:37:7A:52:6A:93:F8:75:E4:1C:16:6E:61:D0:3D:53:9B:54:61:3F:39:BE:BB:55:F7:E8:85`.
 
+## 1.4.0-rc.5-android.1
+
+Now built on Limusic 1.4.0-rc.5.
+
+### Added
+
+- Live radio and broadcasts play. A Live now section on Home lists music
+  streams on air, and while one plays the player shows a Live badge instead of
+  a seek bar.
+
+### Fixed
+
+- A song played from a playlist switches to the video the playlist holds, not
+  another video of the same song.
+- Listen Together connects on networks that blocked its old server address.
+
+### Changed
+
+- Enhanced Lyrics is now only in Settings > Playback, next to the lyrics
+  sources.
+
 ## 1.4.0-rc.4-android.2
 
 ### Added

@@ -31,7 +31,6 @@
 	import * as Popover from '$lib/components/ui/popover';
 	import ColorPicker from '$lib/components/ColorPicker.svelte';
 	import ThemeMock from '$lib/components/ThemeMock.svelte';
-	import EnhancedLyricsSettings from '$lib/components/EnhancedLyricsSettings.svelte';
 	import { LEVELS as ZOOM_LEVELS, setZoom, zoom } from '$lib/zoom.svelte';
 	import { playback, toast } from '$lib/player.svelte';
 	import { thumb } from '$lib/thumb';
@@ -495,7 +494,6 @@
 					control: artworkBgSwitch
 				})}
 			</div>
-			<div class="mt-3"><EnhancedLyricsSettings /></div>
 		</section>
 		{/if}
 	</div>

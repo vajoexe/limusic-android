@@ -8,6 +8,7 @@ mod blocked;
 mod cipher;
 mod commands;
 mod db;
+mod devicelink;
 mod diagnostics;
 mod discord;
 mod github_api;
@@ -937,6 +938,8 @@ pub fn run() {
             // URL does not live here so that nothing ever has to hand it to the UI.
             let lt_url = db.get_setting("lt_server_url").unwrap_or_default();
             let (lt, lt_sync_rx) = listentogether::LtSession::new(handle.clone(), lt_url);
+            // Device link: opens a socket only once the user has linked a device.
+            let (link, link_rx) = devicelink::LinkSession::new(handle.clone(), db.clone());
 
             let app_state = Arc::new(AppState::new(
                 it,
@@ -946,6 +949,7 @@ pub fn run() {
                 handle.clone(),
                 orchestrator,
                 lt,
+                link,
                 cache_dir.clone(),
                 media,
                 discord,
@@ -1014,6 +1018,18 @@ pub fn run() {
                 tauri::async_runtime::spawn(async move {
                     while let Some(cmd) = rx.recv().await {
                         st.apply_sync(cmd).await;
+                    }
+                });
+            }
+
+            // Bridge: apply what the device link asks of the player (remote controls, pause on a
+            // takeover by another device).
+            {
+                let st = app_state.clone();
+                let mut rx = link_rx;
+                tauri::async_runtime::spawn(async move {
+                    while let Some(cmd) = rx.recv().await {
+                        st.apply_link(cmd).await;
                     }
                 });
             }
@@ -1197,6 +1213,7 @@ pub fn run() {
             commands::search_all,
             commands::search_suggestions,
             commands::search_cards,
+            commands::get_live_now,
             commands::search_videos,
             commands::song,
             commands::play,
@@ -1335,6 +1352,13 @@ pub fn run() {
             commands::lt_approve_suggestion,
             commands::lt_reject_suggestion,
             commands::lt_request_sync,
+            commands::link_state,
+            commands::link_start_pairing,
+            commands::link_cancel_pairing,
+            commands::link_unlink,
+            commands::link_forget,
+            commands::link_continue_here,
+            commands::link_play_on,
             commands::get_lyrics,
             commands::choose_lyrics_source,
             commands::set_lyrics_offset,
@@ -1483,25 +1507,37 @@ fn spawn_event_pump(
         while let Some(ev) = events.recv().await {
             match ev {
                 PlayerEvent::Position(p) => {
-                    if throttle.should_emit(p, std::time::Instant::now()) {
+                    // Quiet while the windows show another linked device's playback.
+                    if throttle.should_emit(p, std::time::Instant::now()) && !state.showing_remote()
+                    {
                         let _ = app.emit("position", serde_json::json!({ "position": p }));
                     }
                     state.on_position(p).await;
                 }
                 PlayerEvent::Duration(d) => {
-                    let _ = app.emit("duration", serde_json::json!({ "duration": d }));
+                    if !state.showing_remote() {
+                        let _ = app.emit("duration", serde_json::json!({ "duration": d }));
+                    }
                     state.on_duration(d).await;
                 }
                 PlayerEvent::Playing(playing) => {
-                    let _ = app.emit("playback-state", if playing { "playing" } else { "paused" });
+                    let remote = state.showing_remote();
+                    if !remote {
+                        let _ =
+                            app.emit("playback-state", if playing { "playing" } else { "paused" });
+                    }
                     if !playing {
                         state.flush_position(); // persist exact resume position on pause
-                        let _ = app.emit(
-                            "position",
-                            serde_json::json!({ "position": state.current_position() }),
-                        );
+                        if !remote {
+                            let _ = app.emit(
+                                "position",
+                                serde_json::json!({ "position": state.current_position() }),
+                            );
+                        }
                     }
                     state.media_set_playing(playing);
+                    // Playing here ends showing another linked device; pausing may start it.
+                    state.link_remote_refresh().await;
                     // Keep the tray's toggle label honest — this arm is the same chokepoint
                     // MPRIS uses, so tray state can't drift from media-key state.
                     tray::set_playing(&app, playing);

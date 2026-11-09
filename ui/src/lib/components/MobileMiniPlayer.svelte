@@ -158,7 +158,11 @@
 	>
 		<HugeiconsIcon icon={NextIcon} class="h-5 w-5" />
 	</button>
-	<div class="absolute {pill ? 'inset-x-6' : 'inset-x-2'} bottom-0 h-0.5 overflow-hidden rounded-full bg-foreground/10">
-		<div class="h-full bg-primary" style="width:{pct}%"></div>
-	</div>
+	<!-- A broadcast on air has no length to show progress through: upstream's mini player drops
+	     its progress line for one too (#424). -->
+	{#if !playback.now?.live}
+		<div class="absolute {pill ? 'inset-x-6' : 'inset-x-2'} bottom-0 h-0.5 overflow-hidden rounded-full bg-foreground/10">
+			<div class="h-full bg-primary" style="width:{pct}%"></div>
+		</div>
+	{/if}
 </div>

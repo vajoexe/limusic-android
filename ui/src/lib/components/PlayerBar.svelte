@@ -48,7 +48,10 @@
 	import Marquee from './Marquee.svelte';
 	import SpeedPicker from './SpeedPicker.svelte';
 	import TrackMenu from './TrackMenu.svelte';
+	import DevicePicker from './DevicePicker.svelte';
+	import { link } from '$lib/link.svelte';
 	import { t } from '$lib/i18n.svelte';
+	import LiveBadge from './LiveBadge.svelte';
 
 	let {
 		onToggleQueue,
@@ -377,40 +380,49 @@
 				/>
 			</Button>
 		</div>
-		<div class="flex w-full max-w-md items-center gap-2 text-xs text-muted-foreground">
-			<!-- Fixed slots, or the seek bar twitches as the position ticks: DM Sans has no tabular
-			     figures, so `tabular-nums` does nothing there (#463). -->
-			<span class="min-w-[5ch] text-right tabular-nums">{fmt(shownPosition)}</span>
-			<div
-				class="m3-seek relative flex flex-1 items-center"
-				style="--pct:{seekPct * 100}%"
-			>
-				<M3SeekWave
-					pct={seekPct}
-					paused={playback.paused}
-					duration={shownDuration}
-					dragging={seekDrag !== null}
-				/>
-				<input
-					type="range"
-					class="range w-full flex-1"
-					style="--pct:{seekPct * 100}%"
-					min="0"
-					max={shownDuration || 0}
-					value={shownPosition}
-					oninput={onSeekInput}
-					onchange={onSeekCommit}
-					aria-label={t('player.seek')}
-				/>
+		{#if playback.now?.live}
+			<!-- Same height as the seek row below, so the transport doesn't move when a broadcast
+			     starts or ends. -->
+			<div class="flex h-4 w-full max-w-md items-center justify-center">
+				<LiveBadge />
 			</div>
-			<span class="min-w-[5ch] tabular-nums">{fmt(shownDuration)}</span>
-		</div>
+		{:else}
+			<div class="flex w-full max-w-md items-center gap-2 text-xs text-muted-foreground">
+				<!-- Fixed slots, or the seek bar twitches as the position ticks: DM Sans has no tabular
+				     figures, so `tabular-nums` does nothing there (#463). -->
+				<span class="min-w-[5ch] text-right tabular-nums">{fmt(shownPosition)}</span>
+				<div
+					class="m3-seek relative flex flex-1 items-center"
+					style="--pct:{seekPct * 100}%"
+				>
+					<M3SeekWave
+						pct={seekPct}
+						paused={playback.paused}
+						duration={shownDuration}
+						dragging={seekDrag !== null}
+					/>
+					<input
+						type="range"
+						class="range w-full flex-1"
+						style="--pct:{seekPct * 100}%"
+						min="0"
+						max={shownDuration || 0}
+						value={shownPosition}
+						oninput={onSeekInput}
+						onchange={onSeekCommit}
+						aria-label={t('player.seek')}
+					/>
+				</div>
+				<span class="min-w-[5ch] tabular-nums">{fmt(shownDuration)}</span>
+			</div>
+		{/if}
 	</div>
 
 	<!-- Volume + queue -->
 	<div class="flex flex-1 items-center justify-end gap-2">
-		<!-- Volume is the first control to drop on a narrow window (OS volume still works). -->
-		<div class="hidden items-center gap-1 md:flex">
+		<!-- Volume is the first control to drop on a narrow window (OS volume still works). It is
+		     this desktop's, so it goes while the bar controls a linked device. -->
+		<div class="hidden items-center gap-1 {link.remote ? '' : 'md:flex'}">
 			<Button
 				variant="ghost"
 				size="icon-sm"
@@ -441,6 +453,9 @@
 		</div>
 		<!-- One cluster, so they sit tighter to each other than to the volume slider. -->
 		<div class="flex items-center gap-0.5">
+			{#if link.status !== 'off'}<DevicePicker />{/if}
+			<!-- Speed, pitch and reverb are this desktop's player's; hidden while it controls a linked device. -->
+			{#if !link.remote}
 			<Button
 				variant={ui.tempoPitchOpen ? 'secondary' : 'ghost'}
 				size="icon-sm"
@@ -453,6 +468,7 @@
 					class="h-5 w-5 {effectsOn ? 'text-primary' : ''}"
 				/>
 			</Button>
+			{/if}
 			<Button
 				variant={lyricsOpen ? 'secondary' : 'ghost'}
 				size="icon-sm"

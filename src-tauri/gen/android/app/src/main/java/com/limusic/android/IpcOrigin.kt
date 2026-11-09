@@ -45,8 +45,16 @@ object IpcOrigin {
     return loading
   }
 
-  /** How often to look again for the page's URL before giving up (1 ms apart). */
-  private const val ATTEMPTS = 200
+  /**
+   * How long to keep looking for the page's URL: 1 ms apart for the first [FAST] tries, then every
+   * [SLOW_MS], up to [ATTEMPTS] tries in all (about 10 s). 200 ms was not always enough on the
+   * first start after an update, when Android has the most to do before the WebView loads (seen
+   * once, 2026-11-09: `get_home not allowed` on the first rc.5 start, none on later or reinstall
+   * starts). Each try is a few field reads, and it stops as soon as either URL is known.
+   */
+  private const val ATTEMPTS = 1_180
+  private const val FAST = 200
+  private const val SLOW_MS = 10L
 
   /**
    * From `onWebViewCreate`. wry sets the client and posts the WebView's `loadUrl` after this
@@ -64,7 +72,10 @@ object IpcOrigin {
       val loading = webView.url
       if (loading == null) {
         if (left > 0) {
-          handler.sendMessageDelayed(Message.obtain(handler) { attempt(left - 1) }.apply { isAsynchronous = true }, 1)
+          val delay = if (ATTEMPTS - left < FAST) 1L else SLOW_MS
+          handler.sendMessageDelayed(Message.obtain(handler) { attempt(left - 1) }.apply { isAsynchronous = true }, delay)
+        } else if (BuildConfig.DEBUG) {
+          android.util.Log.w("Limusic", "IPC origin: the WebView never reported its URL; left to onPageStarted")
         }
         return
       }
